@@ -48,3 +48,6 @@ printed in one go, and the accumulated print instructions reset.
 * Pixel font data based on the free
 [Tamsyn](http://www.fial.com/~scott/tamsyn-font/) bitmap font
 
+# See also
+
+A blog post with a writeup of some of the techniques used in this module can be found [here](https://poniesandlight.co.uk/reflect/debug_print_text/).
