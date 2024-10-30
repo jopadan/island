@@ -1,3 +1,4 @@
+examples/screenshot_example:Island-ScreenshotExample
 examples/video_player_example:Island-VideoPlayerExample
 examples/compute_example:Island-ComputeExample
 examples/test_log:Island-TestLog
