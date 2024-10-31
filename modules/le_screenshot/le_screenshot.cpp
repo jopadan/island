@@ -7,7 +7,10 @@
 #include "le_swapchain_img.h"
 #include "le_png.h"
 #include "le_log.h"
+
 #include <filesystem>
+#include <vector>
+#include <string>
 
 static constexpr auto LOGGER_LABEL = "le_screenshot";
 
@@ -18,7 +21,6 @@ namespace {
 #include "shaders/fullscreen_vert.h"
 } // namespace
 
-#include <vector>
 
 // ----------------------------------------------------------------------
 // Default settings for screenshot image swapchain. Copy and modify to
@@ -223,7 +225,7 @@ static bool le_screenshot_record( le_screenshot_o* self, le_rendergraph_o* rg, l
 			// and start our new screenshots at this offset.
 
 			auto        target_path    = std::filesystem::path( self->swapchain_settings.image_filename_template ).remove_filename();
-			std::string ext            = std::filesystem::path( self->swapchain_settings.image_filename_template ).extension();
+			std::string ext            = std::filesystem::path( self->swapchain_settings.image_filename_template ).extension().string();
 			uint32_t    largest_number = 0;
 
 			if ( !std::filesystem::exists( target_path ) ) {
@@ -238,13 +240,12 @@ static bool le_screenshot_record( le_screenshot_o* self, le_rendergraph_o* rg, l
 			for ( auto const& f : std::filesystem::directory_iterator{ target_path } ) {
 				if ( std::filesystem::is_regular_file( f ) && f.path().extension() == ext ) {
 
-					logger.debug( "Found existing screenshot: %s", f.path().c_str() );
-
 					uint32_t frame_number = 0;
-					const std::string& path         = f.path();
-					char const* const  path_c_str   = path.c_str();
+					std::string tmp_path     = f.path().string();
 
-					if ( 1 == sscanf( path_c_str, self->swapchain_settings.image_filename_template, &frame_number ) ) {
+					logger.debug( "Found existing screenshot: %s", tmp_path.c_str() );
+
+					if ( 1 == sscanf( tmp_path.c_str(), self->swapchain_settings.image_filename_template, &frame_number ) ) {
 
 						if ( frame_number >= largest_number ) {
 							largest_number = frame_number + 1;
