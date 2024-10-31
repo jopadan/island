@@ -231,7 +231,9 @@ static bool le_screenshot_record( le_screenshot_o* self, le_rendergraph_o* rg, l
 			if ( !std::filesystem::exists( target_path ) ) {
 				if ( std::filesystem::create_directories( target_path ) ) {
 					logger.info( "Created screenshot output directory: '%s'", target_path.c_str() );
-				} else {
+				} 
+
+				if ( !std::filesystem::exists( target_path ) ) {
 					logger.error( "Could not create screenshot output directory: '%s'", target_path.c_str() );
 				}
 			}
