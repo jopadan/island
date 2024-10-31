@@ -146,10 +146,10 @@ static void le_screenshot_blit_apply( le_screenshot_o* self, le_rendergraph_o* r
 	        .setExecuteCallback( self, []( le_command_buffer_encoder_o* encoder_, void* user_data ) {
 		        auto                fx = static_cast<le_screenshot_o*>( user_data );
 		        le::GraphicsEncoder encoder{ encoder_ };
-				encoder
-					.bindGraphicsPipeline( pipelineBlit )
-					.setArgumentTexture( LE_ARGUMENT_NAME( "src_tex_unit_0" ), fx->tex_blit_source )
-					.draw( 4 );
+		        encoder
+		            .bindGraphicsPipeline( pipelineBlit )
+		            .setArgumentTexture( LE_ARGUMENT_NAME( "src_tex_unit_0" ), fx->tex_blit_source )
+		            .draw( 4 );
 	        } );
 
 	auto rendergraph = le::RenderGraph( rg );
@@ -241,7 +241,10 @@ static bool le_screenshot_record( le_screenshot_o* self, le_rendergraph_o* rg, l
 					logger.debug( "Found existing screenshot: %s", f.path().c_str() );
 
 					uint32_t frame_number = 0;
-					if ( 1 == sscanf( f.path().c_str(), self->swapchain_settings.image_filename_template, &frame_number ) ) {
+					const std::string& path         = f.path();
+					char const* const  path_c_str   = path.c_str();
+
+					if ( 1 == sscanf( path_c_str, self->swapchain_settings.image_filename_template, &frame_number ) ) {
 
 						if ( frame_number >= largest_number ) {
 							largest_number = frame_number + 1;
