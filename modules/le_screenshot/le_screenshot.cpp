@@ -126,31 +126,31 @@ static void le_screenshot_blit_apply( le_screenshot_o* self, le_rendergraph_o* r
 			.build();
 
 	auto blit_pass =
-		le::RenderPass( "Screenshot BLIT" )
-			.addColorAttachment(
-				image_dst,
-				le::ImageAttachmentInfoBuilder()
-					.setLoadOp( le::AttachmentLoadOp::eDontCare )
-					.build() ) // color attachment
-			.sampleTexture(
-				self->tex_blit_source,
-				le::ImageSamplerInfoBuilder()
-					.withImageViewInfo()
-					.setImage( image_src )
-					.end()
-					.withSamplerInfo()
-					.setAddressModeU( le::SamplerAddressMode::eRepeat )
-					.setAddressModeV( le::SamplerAddressMode::eRepeat )
-					.end()
-					.build() )
-			.setExecuteCallback( self, []( le_command_buffer_encoder_o* encoder_, void* user_data ) {
-				auto                fx = static_cast<typeof( self )>( user_data );
-				le::GraphicsEncoder encoder{ encoder_ };
+	    le::RenderPass( "Screenshot BLIT" )
+	        .addColorAttachment(
+	            image_dst,
+	            le::ImageAttachmentInfoBuilder()
+	                .setLoadOp( le::AttachmentLoadOp::eDontCare )
+	                .build() ) // color attachment
+	        .sampleTexture(
+	            self->tex_blit_source,
+	            le::ImageSamplerInfoBuilder()
+	                .withImageViewInfo()
+	                .setImage( image_src )
+	                .end()
+	                .withSamplerInfo()
+	                .setAddressModeU( le::SamplerAddressMode::eRepeat )
+	                .setAddressModeV( le::SamplerAddressMode::eRepeat )
+	                .end()
+	                .build() )
+	        .setExecuteCallback( self, []( le_command_buffer_encoder_o* encoder_, void* user_data ) {
+		        auto                fx = static_cast<le_screenshot_o*>( user_data );
+		        le::GraphicsEncoder encoder{ encoder_ };
 				encoder
 					.bindGraphicsPipeline( pipelineBlit )
 					.setArgumentTexture( LE_ARGUMENT_NAME( "src_tex_unit_0" ), fx->tex_blit_source )
 					.draw( 4 );
-			} );
+	        } );
 
 	auto rendergraph = le::RenderGraph( rg );
 	rendergraph
