@@ -66,19 +66,29 @@ float get_grid(in const vec2 coord, in const vec2 factor){
 void main(){
 
 
+
 	vec2 st = inTexCoord.xy;
     
+    // Map texture space to "cartography space"
+    // where x,y is expressed as longitude,latitude
+
     float lon = (st.x-0.5) * PI * 2;
     float lat = -(st.y-0.5) * PI;
     
+    // Transfer from texture space into sphere space 
+    // by interpreting texture coordinates as points 
+    // on the unit sphere
     vec3 pos = vec3(
         cos(lat) * cos(lon), 
         cos(lat) * sin(lon), 
         sin(lat)
         );
 
+    // Apply transform onto the point on the unit sphere
     pos = (model_matrix * vec4(pos,0)).xyz;
 
+    // map the transformed point of the unit sphere back 
+    // to "cartography space" 
     lon = atan(pos.y, pos.x); // xy angle (camera faces into -z) [-PI/2..PI/2]
     lat = asin(pos.z);        // [-PI..PI]
 

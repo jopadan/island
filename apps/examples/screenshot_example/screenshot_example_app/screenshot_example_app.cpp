@@ -188,8 +188,17 @@ static void place_north_pole( app_o* self, glm::vec2 st ) {
 	    sin( lat ),
 	};
 
+	// pos is by definition on the unit sphere
 	pos = glm::normalize( pos );
 
+	// Build a quaternion for a rotation given an axis/angle pair.
+	// 
+	// A quaternion can ge constructed fairly straightforwardly from 
+	// an angle-axis representation.
+	// 
+	// We choose the rotation axis to be normal onto the plane spanned by 
+	// origin->previous_position, origin->pos
+	// 
 	glm::vec3 axis  = normalize( glm::cross( previous_position, pos ) );
 	float     angle = acos( glm::dot( previous_position, pos ) );
 
@@ -197,7 +206,6 @@ static void place_north_pole( app_o* self, glm::vec2 st ) {
 		angle *= -1;
 	}
 
-	// pos is by definition on the unit sphere
 	float     w  = glm::cos( angle / 2 );
 	float     v  = glm::sin( angle / 2 );
 	glm::vec3 qv = axis * v;
