@@ -10,6 +10,9 @@
 
 #include "le_screenshot.h"
 #include "le_debug_print_text.h"
+#include "le_swapchain_vk.h"
+#include "le_swapchain_img.h"
+#include "le_png.h"
 
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
@@ -248,7 +251,7 @@ static void app_process_ui_events( app_o* self ) {
 					wants_toggle ^= true;
 				} else if ( e.key == LeUiEvent::NamedKey::eS ) {
 					// save screenshot
-					self->num_screenshot_examples_to_record = 1;
+					self->num_screenshot_examples_to_record = 12;
 				} else if ( e.key == LeUiEvent::NamedKey::eG ) {
 					// toggle grid
 					self->hide_grid ^= 1;
@@ -334,7 +337,16 @@ static bool screenshot_example_app_update( screenshot_example_app_o* self ) {
 		// in case the screen_grabber has any objects in-flight that need to be
 		// updated.
 		//
-		le_screenshot_api_i->le_screenshot_i.record( self->screen_grabber, rg, self->swapchain_image, &self->num_screenshot_examples_to_record, nullptr );
+
+		le_swapchain_img_settings_t settings{
+		    .width_hint  = 800, // 0 means to take the width of the renderer's first swapchain
+		    .height_hint = 400, // 0 means to take the height of the renderer's first swapchain
+
+		    .format_hint             = le::Format::eR8G8B8A8Unorm,
+		    .image_encoder_i         = le_png::api->le_png_image_encoder_i,
+		    .image_filename_template = "./capture/screenshot_%08d.png",
+		};
+		le_screenshot_api_i->le_screenshot_i.record( self->screen_grabber, rg, self->swapchain_image, &self->num_screenshot_examples_to_record, &settings );
 	}
 
 	if ( !self->hide_help_text ) {

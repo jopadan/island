@@ -13,6 +13,8 @@ depends_on_island_module(le_log)
 depends_on_island_module(le_screenshot)
 depends_on_island_module(le_debug_print_text)
 depends_on_island_module(le_resource_manager)
+depends_on_island_module(le_swapchain_vk)
+depends_on_island_module(le_png)
 
 set (SOURCES "screenshot_example_app.cpp")
 set (SOURCES ${SOURCES} "screenshot_example_app.h")
