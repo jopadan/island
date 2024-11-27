@@ -245,7 +245,10 @@ class RenderPass {
 	le_renderpass_o* self;
 
   public:
-	RenderPass( const char* name_, const le::QueueFlagBits& type_ = le::QueueFlagBits::eGraphics )
+	// We must allow for this constructor to be called with no name, so that it can be used with initializer lists
+	// and perfect forwarding (this is necessary if you want to throw a RenderPass into a std::unordered_map, for
+	// example.
+	RenderPass( const char* name_ = "", const le::QueueFlagBits& type_ = le::QueueFlagBits::eGraphics )
 	    : self( le_renderer::renderpass_i.create( name_, type_ ) ) {
 	}
 
@@ -256,7 +259,7 @@ class RenderPass {
 	}
 
 	// Create facade from pointer
-	RenderPass( le_renderpass_o* self_ )
+	explicit RenderPass( le_renderpass_o* self_ )
 	    : self( self_ ) {
 		le_renderer::renderpass_i.ref_inc( self );
 	}
