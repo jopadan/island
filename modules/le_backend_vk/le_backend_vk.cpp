@@ -40,7 +40,12 @@
 
 static constexpr auto LEGACY_SWAPCHAIN = false;
 static constexpr auto LOGGER_LABEL     = "le_backend_vk";
-static auto           logger           = LeLog( LOGGER_LABEL );
+
+static le::Log& logger() {
+	// Enforce lazy initialization for logger().oblect
+	static auto logger = le::Log( LOGGER_LABEL );
+	return logger;
+};
 
 #ifdef _MSC_VER
 #	define NOMINMAX     // we do this so that Windows.h does not define min and max macros
@@ -824,12 +829,12 @@ static void backend_destroy( le_backend_o* self ) {
 		for ( auto& f : frameData.frame_owned_swapchain_state ) {
 			if ( f.second.present_complete ) {
 				vkDestroySemaphore( device, f.second.present_complete, nullptr );
-				logger.debug( "Destroyed Present Complete Semaphore %p", f.second.present_complete );
+				logger().debug( "Destroyed Present Complete Semaphore %p", f.second.present_complete );
 				f.second.present_complete = nullptr;
 			}
 			if ( f.second.render_complete ) {
 				vkDestroySemaphore( device, f.second.render_complete, nullptr );
-				logger.debug( "Destroyed Render Complete Semaphore %p", f.second.render_complete );
+				logger().debug( "Destroyed Render Complete Semaphore %p", f.second.render_complete );
 				f.second.render_complete = nullptr;
 			}
 		}
@@ -976,7 +981,7 @@ static le_swapchain_handle backend_add_swapchain( le_backend_o* self, le_swapcha
 
 	assert( backend_settings );
 	if ( backend_settings == nullptr ) {
-		logger.error( "FATAL: Must specify settings for backend." );
+		logger().error( "FATAL: Must specify settings for backend." );
 		exit( 1 );
 	}
 
@@ -1031,14 +1036,14 @@ static le_swapchain_handle backend_add_swapchain( le_backend_o* self, le_swapcha
 		             std::max<uint32_t>(
 		                 swapchain_data.image_count,
 		                 2 ) ) ) ) {
-			logger.info( "Backend data frame count was adapted from %d to %d because swapchain provides %d images.",
-			             original_backend_frame_count,
-			             backend_settings->data_frames_count,
-			             swapchain_data.image_count );
+			logger().info( "Backend data frame count was adapted from %d to %d because swapchain provides %d images.",
+			               original_backend_frame_count,
+			               backend_settings->data_frames_count,
+			               swapchain_data.image_count );
 		} else if ( swapchain_data.image_count < backend_settings->data_frames_count ) {
-			logger.error( "Swapchain may not be able to provide enough images for backend. "
-			              "Swapchain image count: %d, Backend data frame count: %d",
-			              swapchain_data.image_count, backend_settings->data_frames_count );
+			logger().error( "Swapchain may not be able to provide enough images for backend. "
+			                "Swapchain image count: %d, Backend data frame count: %d",
+			                swapchain_data.image_count, backend_settings->data_frames_count );
 		}
 	}
 
@@ -1046,7 +1051,7 @@ static le_swapchain_handle backend_add_swapchain( le_backend_o* self, le_swapcha
 	const auto& [ pair, was_emplaced ] = self->swapchains.emplace( swapchain_index, swapchain_data );
 
 	if ( !was_emplaced ) {
-		logger.error( "swapchain already existed: %x", swapchain_index );
+		logger().error( "swapchain already existed: %x", swapchain_index );
 	}
 
 	// We must hand out a swapchain handle - the handle is just a (unique) number,
@@ -1464,7 +1469,7 @@ static void backend_setup( le_backend_o* self ) {
 
 	assert( settings );
 	if ( settings == nullptr ) {
-		logger.error( "FATAL: Must specify settings for backend." );
+		logger().error( "FATAL: Must specify settings for backend." );
 		exit( 1 );
 	} else {
 		// Freeze settings, as these will be the settings that apply for the lifetime of the backend.
@@ -1472,7 +1477,7 @@ static void backend_setup( le_backend_o* self ) {
 	}
 
 	if ( nullptr == self->instance ) {
-		logger.error( "FATAL: No Vulkan instance available to backend_setup() - Did you forget to call backend_initialise() first?" );
+		logger().error( "FATAL: No Vulkan instance available to backend_setup() - Did you forget to call backend_initialise() first?" );
 		exit( 1 );
 	}
 
@@ -1569,7 +1574,7 @@ static void backend_setup( le_backend_o* self ) {
 		    self->device->getVkDevice(), &sampler_ycbcr_conversion_create_info, nullptr,
 		    &self->vk_sampler_ycbcr_conversion );
 		if ( result != VK_SUCCESS ) {
-			logger.error( "could not create Ycbcr Conversion Sampler" );
+			logger().error( "could not create Ycbcr Conversion Sampler" );
 		}
 
 		self->vk_sampler_ycbcr_conversion_info = {
@@ -2009,7 +2014,7 @@ static void frame_track_resource_state(
 			backbufferState.stage          = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT; // we need this, since semaphore waits on this stage
 			backbufferState.visible_access = VkAccessFlagBits2( 0 );                          // semaphore took care of availability - we can assume memory is already available
 		} else {
-			logger.warn( "No reference to backbuffer found in renderpass" );
+			logger().warn( "No reference to backbuffer found in renderpass" );
 		}
 	}
 
@@ -2164,7 +2169,7 @@ static void frame_track_resource_state(
 
 			resource_last_used_in_pass[ handle ]->sync_ops_after_pass.push_back( { handle, max_idx, sync_indices_count - 1, true } );
 
-			// logger.warn( "Image %s :: sync chain length %d > %d, last used in pass: %s",
+			// logger().warn( "Image %s :: sync chain length %d > %d, last used in pass: %s",
 			//              handle->data->debug_name, syncChainTable[ handle ].size(), max_idx,
 			//              resource_last_used_in_pass[ handle ]->debugName );
 		}
@@ -2176,17 +2181,17 @@ static void backend_debug_print_framedata( BackendFrameData const& frame ) {
 	ZoneScoped;
 
 	for ( auto const& [ handle, resource ] : frame.availableResources ) {
-		logger.info( "[% 2d] : "
-		             "% 48s@%d, %s, %d x %d @ %x, %p",
-		             frame.frameNumber,
-		             handle->data->debug_name,
-		             1 << handle->data->num_samples,
-		             to_str_vk_image_layout( resource.info.imageInfo.initialLayout ),
-		             resource.info.imageInfo.extent.width,
-		             resource.info.imageInfo.extent.height,
-		             resource.info.imageInfo.samples,
-		             resource.as.image
-		             //
+		logger().info( "[% 2d] : "
+		               "% 48s@%d, %s, %d x %d @ %x, %p",
+		               frame.frameNumber,
+		               handle->data->debug_name,
+		               1 << handle->data->num_samples,
+		               to_str_vk_image_layout( resource.info.imageInfo.initialLayout ),
+		               resource.info.imageInfo.extent.width,
+		               resource.info.imageInfo.extent.height,
+		               resource.info.imageInfo.samples,
+		               resource.as.image
+		               //
 
 		);
 	}
@@ -2207,10 +2212,10 @@ static bool backend_poll_frame_fence( le_backend_o* self, size_t frameIndex ) {
 	// le::Log( LOGGER_LABEL ).info( "=[%3d]== frame fence cleared", frameIndex );
 
 	if ( result == VK_ERROR_DEVICE_LOST ) {
-		logger.error( "Poll Frame Fence returned: %s", to_str_vk_result( result ) );
+		logger().error( "Poll Frame Fence returned: %s", to_str_vk_result( result ) );
 		exit( 1 );
 	} else if ( result != VK_SUCCESS ) {
-		logger.warn( "Poll Frame Fence returned: %s", to_str_vk_result( result ) );
+		logger().warn( "Poll Frame Fence returned: %s", to_str_vk_result( result ) );
 		return false;
 	} else {
 		return true;
@@ -2249,7 +2254,7 @@ static bool backend_clear_frame( le_backend_o* self, size_t frameIndex ) {
 	vkResetFences( device, 1, &frame.frameFence );
 
 	for ( auto& s : frame.retired_semaphores ) {
-		logger.debug( "Destroyed Semaphore %p", s );
+		logger().debug( "Destroyed Semaphore %p", s );
 		vkDestroySemaphore( device, s, nullptr );
 	}
 	frame.retired_semaphores.clear();
@@ -2303,7 +2308,7 @@ static bool backend_clear_frame( le_backend_o* self, size_t frameIndex ) {
 				break;
 
 			case AbstractPhysicalResource::eUndefined:
-				logger.warn( "%s: abstract physical resource has unknown type (%p) and cannot be deleted. leaking...", __PRETTY_FUNCTION__, r.type );
+				logger().warn( "%s: abstract physical resource has unknown type (%p) and cannot be deleted. leaking...", __PRETTY_FUNCTION__, r.type );
 				break;
 			}
 		}
@@ -2401,8 +2406,8 @@ static void backend_create_renderpasses( BackendFrameData& frame, VkDevice& devi
 		VkAccessFlags2        dstAccessToExternalFlags = 0;
 
 		if ( LE_PRINT_DEBUG_MESSAGES ) {
-			logger.info( "* Renderpass: '%s'", pass.debugName );
-			logger.info( " %40s : %30s : %30s : %30s", "Attachment", "Layout initial", "Layout subpass", "Layout final" );
+			logger().info( "* Renderpass: '%s'", pass.debugName );
+			logger().info( " %40s : %30s : %30s : %30s", "Attachment", "Layout initial", "Layout subpass", "Layout final" );
 		}
 
 		auto const attachments_end = pass.attachments +
@@ -2437,14 +2442,14 @@ static void backend_create_renderpasses( BackendFrameData& frame, VkDevice& devi
 			};
 
 			if ( LE_PRINT_DEBUG_MESSAGES ) {
-				logger.info( " %38s@%d : %30s → %30s → %30s | sync chain indices: %4d : %4d : %4d",
-				             attachment->resource->data->debug_name, 1 << attachment->resource->data->num_samples,
-				             to_str_vk_image_layout( syncInitial.layout ),
-				             to_str_vk_image_layout( syncSubpass.layout ),
-				             to_str_vk_image_layout( syncFinal.layout ),
-				             attachment->initialStateOffset,
-				             attachment->initialStateOffset + 1,
-				             attachment->finalStateOffset );
+				logger().info( " %38s@%d : %30s → %30s → %30s | sync chain indices: %4d : %4d : %4d",
+				               attachment->resource->data->debug_name, 1 << attachment->resource->data->num_samples,
+				               to_str_vk_image_layout( syncInitial.layout ),
+				               to_str_vk_image_layout( syncSubpass.layout ),
+				               to_str_vk_image_layout( syncFinal.layout ),
+				               attachment->initialStateOffset,
+				               attachment->initialStateOffset + 1,
+				               attachment->finalStateOffset );
 			}
 
 			attachments.emplace_back( attachmentDescription );
@@ -2499,7 +2504,7 @@ static void backend_create_renderpasses( BackendFrameData& frame, VkDevice& devi
 		}
 
 		if ( LE_PRINT_DEBUG_MESSAGES ) {
-			logger.info( "" );
+			logger().info( "" );
 		}
 
 		std::vector<VkSubpassDescription2> subpasses;
@@ -2531,22 +2536,22 @@ static void backend_create_renderpasses( BackendFrameData& frame, VkDevice& devi
 		{
 			if ( LE_PRINT_DEBUG_MESSAGES ) {
 
-				logger.info( "Subpass Dependency: VK_SUBPASS_EXTERNAL to subpass `%s`", pass.debugName );
-				logger.info( "\t srcStage: %-40s Anything in stage %1$s must happen-before", to_string_vk_pipeline_stage_flags2( srcStageFromExternalFlags ).c_str() );
-				logger.info( "\t dstStage: %-40s anything in stage %1$s.", to_string_vk_pipeline_stage_flags2( dstStageFromExternalFlags ).c_str() );
+				logger().info( "Subpass Dependency: VK_SUBPASS_EXTERNAL to subpass `%s`", pass.debugName );
+				logger().info( "\t srcStage: %-40s Anything in stage %1$s must happen-before", to_string_vk_pipeline_stage_flags2( srcStageFromExternalFlags ).c_str() );
+				logger().info( "\t dstStage: %-40s anything in stage %1$s.", to_string_vk_pipeline_stage_flags2( dstStageFromExternalFlags ).c_str() );
 				uint64_t( srcAccessFromExternalFlags )
-				    ? logger.info( "\tsrcAccess: %-40s Memory from stage %s, accessing %1$s must be made available", to_string_vk_access_flags2( srcAccessFromExternalFlags ).c_str(), to_string_vk_pipeline_stage_flags2( srcStageFromExternalFlags ).c_str() )
-				    : logger.info( "\tsrcAccess: %-40s No memory needs to be made available", to_string_vk_access_flags2( srcAccessFromExternalFlags ).c_str() );
-				logger.info( "\tdstAccess: %-40s before memory is made visible to %1$s in stage %s", to_string_vk_access_flags2( dstAccessFromExternalFlags ).c_str(), to_string_vk_pipeline_stage_flags2( dstStageFromExternalFlags ).c_str() );
+				    ? logger().info( "\tsrcAccess: %-40s Memory from stage %s, accessing %1$s must be made available", to_string_vk_access_flags2( srcAccessFromExternalFlags ).c_str(), to_string_vk_pipeline_stage_flags2( srcStageFromExternalFlags ).c_str() )
+				    : logger().info( "\tsrcAccess: %-40s No memory needs to be made available", to_string_vk_access_flags2( srcAccessFromExternalFlags ).c_str() );
+				logger().info( "\tdstAccess: %-40s before memory is made visible to %1$s in stage %s", to_string_vk_access_flags2( dstAccessFromExternalFlags ).c_str(), to_string_vk_pipeline_stage_flags2( dstStageFromExternalFlags ).c_str() );
 
-				logger.info( "Subpass Dependency: subpass `%s` to VK_SUBPASS_EXTERNAL:", pass.debugName );
-				logger.info( "\t srcStage: %-40s Anything in stage %1$s must happen-before", to_string_vk_pipeline_stage_flags2( srcStageToExternalFlags ).c_str() );
-				logger.info( "\t dstStage: %-40s anything in stage %1$s.", to_string_vk_pipeline_stage_flags2( dstStageToExternalFlags ).c_str() );
+				logger().info( "Subpass Dependency: subpass `%s` to VK_SUBPASS_EXTERNAL:", pass.debugName );
+				logger().info( "\t srcStage: %-40s Anything in stage %1$s must happen-before", to_string_vk_pipeline_stage_flags2( srcStageToExternalFlags ).c_str() );
+				logger().info( "\t dstStage: %-40s anything in stage %1$s.", to_string_vk_pipeline_stage_flags2( dstStageToExternalFlags ).c_str() );
 				uint64_t( srcAccessToExternalFlags )
-				    ? logger.info( "\tsrcAccess: %-40s Memory from stage %s, accessing %1$s must be made available", to_string_vk_access_flags2( srcAccessToExternalFlags ).c_str(), to_string_vk_pipeline_stage_flags2( srcStageToExternalFlags ).c_str() )
-				    : logger.info( "\tsrcAccess: %-40s No memory needs to be made available", to_string_vk_access_flags2( srcAccessToExternalFlags ).c_str() );
-				logger.info( "\tdstAccess: %-40s before memory is made visible to %1$s in stage %s", to_string_vk_access_flags2( dstAccessToExternalFlags ).c_str(), to_string_vk_pipeline_stage_flags2( dstStageToExternalFlags ).c_str() );
-				logger.info( "" );
+				    ? logger().info( "\tsrcAccess: %-40s Memory from stage %s, accessing %1$s must be made available", to_string_vk_access_flags2( srcAccessToExternalFlags ).c_str(), to_string_vk_pipeline_stage_flags2( srcStageToExternalFlags ).c_str() )
+				    : logger().info( "\tsrcAccess: %-40s No memory needs to be made available", to_string_vk_access_flags2( srcAccessToExternalFlags ).c_str() );
+				logger().info( "\tdstAccess: %-40s before memory is made visible to %1$s in stage %s", to_string_vk_access_flags2( dstAccessToExternalFlags ).c_str(), to_string_vk_pipeline_stage_flags2( dstStageToExternalFlags ).c_str() );
+				logger().info( "" );
 			}
 
 			memoryBarriers[ 0 ] = {
@@ -3080,10 +3085,10 @@ static inline AllocatedResourceVk allocate_resource_vk( const VmaAllocator& allo
 		         resourceInfo.imageInfo.extent.width *
 		         resourceInfo.imageInfo.extent.height ) {
 
-			logger.error( "Image cannot be allocated with invalid extents: %dx%dx%d",
-			              resourceInfo.imageInfo.extent.depth,
-			              resourceInfo.imageInfo.extent.width,
-			              resourceInfo.imageInfo.extent.height );
+			logger().error( "Image cannot be allocated with invalid extents: %dx%dx%d",
+			                resourceInfo.imageInfo.extent.depth,
+			                resourceInfo.imageInfo.extent.width,
+			                resourceInfo.imageInfo.extent.height );
 			return res;
 		}
 
@@ -3200,7 +3205,7 @@ static inline AllocatedResourceVk allocate_resource_vk( const VmaAllocator& allo
 
 		vkCreateAccelerationStructureKHR( device, &create_info, nullptr, &res.as.blas );
 
-		logger.info( "Created acceleration structure '%p' with size: %d, scratch size: %d", res.as.blas, build_sizes.accelerationStructureSize, build_sizes.buildScratchSize );
+		logger().info( "Created acceleration structure '%p' with size: %d, scratch size: %d", res.as.blas, build_sizes.accelerationStructureSize, build_sizes.buildScratchSize );
 
 		res.info.blasInfo.buffer_size = build_sizes.accelerationStructureSize;
 
@@ -3311,7 +3316,7 @@ static inline AllocatedResourceVk allocate_resource_vk( const VmaAllocator& allo
 		res.info.tlasInfo.buffer_size         = build_sizes.accelerationStructureSize;
 
 	} else {
-		logger.error( "Cannot allocate unknown resource type." );
+		logger().error( "Cannot allocate unknown resource type." );
 	}
 	assert( result == VK_SUCCESS );
 	return res;
@@ -3753,36 +3758,36 @@ static void insert_msaa_versions(
 static void printResourceInfo( le_resource_handle const& handle, ResourceCreateInfo const& info, const char* prefix = "" ) {
 	ZoneScoped;
 	if ( info.isBuffer() ) {
-		logger.info( "%-15s : %-32s : %11d : %30s : %-30s", prefix, handle->data->debug_name, info.bufferInfo.size, "-",
-		             to_string_vk_buffer_usage_flags( info.bufferInfo.usage ).c_str() );
+		logger().info( "%-15s : %-32s : %11d : %30s : %-30s", prefix, handle->data->debug_name, info.bufferInfo.size, "-",
+		               to_string_vk_buffer_usage_flags( info.bufferInfo.usage ).c_str() );
 	} else if ( info.isImage() ) {
-		logger.info( "%-15s : %-30s@%d : %dx%dx%d : %30s : %-30s",
-		             prefix,
-		             !( handle->data->debug_name[ 0 ] == '\0' )
-		                 ? handle->data->debug_name
-		             : handle->data->reference_handle
-		                 ? handle->data->reference_handle->data->debug_name
-		                 : "unnamed",
-		             uint32( info.imageInfo.samples ),
-		             info.imageInfo.extent.width,
-		             info.imageInfo.extent.height,
-		             info.imageInfo.extent.depth,
-		             to_str_vk_format( info.imageInfo.format ),
-		             to_string_vk_image_usage_flags( info.imageInfo.usage ).c_str() );
+		logger().info( "%-15s : %-30s@%d : %dx%dx%d : %30s : %-30s",
+		               prefix,
+		               !( handle->data->debug_name[ 0 ] == '\0' )
+		                   ? handle->data->debug_name
+		               : handle->data->reference_handle
+		                   ? handle->data->reference_handle->data->debug_name
+		                   : "unnamed",
+		               uint32( info.imageInfo.samples ),
+		               info.imageInfo.extent.width,
+		               info.imageInfo.extent.height,
+		               info.imageInfo.extent.depth,
+		               to_str_vk_format( info.imageInfo.format ),
+		               to_string_vk_image_usage_flags( info.imageInfo.usage ).c_str() );
 	} else if ( info.isBlas() ) {
-		logger.info( "%-15s :%-32s : %11d : (%28d) : %-30s",
-		             prefix,
-		             handle->data->debug_name,
-		             info.blasInfo.buffer_size,
-		             info.blasInfo.scratch_buffer_size,
-		             "-" );
+		logger().info( "%-15s :%-32s : %11d : (%28d) : %-30s",
+		               prefix,
+		               handle->data->debug_name,
+		               info.blasInfo.buffer_size,
+		               info.blasInfo.scratch_buffer_size,
+		               "-" );
 	} else if ( info.isTlas() ) {
-		logger.info( "%-15s :%-32s : %11d : (%28d) : %-30s",
-		             prefix,
-		             handle->data->debug_name,
-		             info.tlasInfo.buffer_size,
-		             info.tlasInfo.scratch_buffer_size,
-		             "-" );
+		logger().info( "%-15s :%-32s : %11d : (%28d) : %-30s",
+		               prefix,
+		               handle->data->debug_name,
+		               info.tlasInfo.buffer_size,
+		               info.tlasInfo.scratch_buffer_size,
+		               "-" );
 	}
 }
 
@@ -3828,9 +3833,9 @@ static bool inferImageFormat( le_backend_o* self, le_image_resource_handle const
 	auto inferred_format = infer_image_format_from_le_image_usage_flags( self, usageFlags );
 
 	if ( inferred_format == le::Format::eUndefined ) {
-		logger.error( "Fatal: Cannot infer image format, resource underspecified: '%s'", resource->data->debug_name );
-		logger.error( "Specify usage, or provide explicit format option for resource to fix this error. " );
-		logger.error( "Consider using le::RenderModule::declareResource()" );
+		logger().error( "Fatal: Cannot infer image format, resource underspecified: '%s'", resource->data->debug_name );
+		logger().error( "Specify usage, or provide explicit format option for resource to fix this error. " );
+		logger().error( "Consider using le::RenderModule::declareResource()" );
 
 		assert( false ); // we don't have enough information to infer image format.
 		return false;
@@ -3964,10 +3969,10 @@ static void backend_allocate_resources( le_backend_o* self, BackendFrameData& fr
 
 	if ( LE_PRINT_DEBUG_MESSAGES ) {
 		for ( auto const& r : active_resources ) {
-			logger.info( "resource [ %-30s ] : [ %-50s ]", r.first->data->debug_name,
-			             r.second.type == LeResourceType::eImage
-			                 ? to_string_vk_image_usage_flags( r.second.image.usage ).c_str()
-			                 : to_string_vk_buffer_usage_flags( r.second.buffer.usage ).c_str() );
+			logger().info( "resource [ %-30s ] : [ %-50s ]", r.first->data->debug_name,
+			               r.second.type == LeResourceType::eImage
+			                   ? to_string_vk_image_usage_flags( r.second.image.usage ).c_str()
+			                   : to_string_vk_buffer_usage_flags( r.second.buffer.usage ).c_str() );
 		}
 	}
 
@@ -4089,7 +4094,7 @@ static void backend_allocate_resources( le_backend_o* self, BackendFrameData& fr
 			}
 		} // end for all used resources
 		if ( LE_PRINT_DEBUG_MESSAGES ) {
-			logger.info( "" );
+			logger().info( "" );
 		}
 	}
 
@@ -4139,37 +4144,37 @@ static void backend_allocate_resources( le_backend_o* self, BackendFrameData& fr
 	// If we locked backendResources with a mutex, this would be the right place to release it.
 
 	if ( LE_PRINT_DEBUG_MESSAGES ) {
-		logger.info( "Available Resources" );
-		logger.info( "%10s : %38s : %30s", "Type", "debugName", "Vk Handle" );
+		logger().info( "Available Resources" );
+		logger().info( "%10s : %38s : %30s", "Type", "debugName", "Vk Handle" );
 		for ( auto const& r : frame.availableResources ) {
 			switch ( r.second.info.type ) {
 			case ( LeResourceType::eUndefined ):
-				logger.warn( "%10s : %38s : %30p",
-				             "undefined",
-				             r.first->data->debug_name, r.second );
+				logger().warn( "%10s : %38s : %30p",
+				               "undefined",
+				               r.first->data->debug_name, r.second );
 				break;
 			case ( LeResourceType::eBuffer ):
-				logger.info( "%10s : %38s : %30p",
-				             "Buffer",
-				             r.first->data->debug_name,
-				             r.second.as.buffer );
+				logger().info( "%10s : %38s : %30p",
+				               "Buffer",
+				               r.first->data->debug_name,
+				               r.second.as.buffer );
 				break;
 			case ( LeResourceType::eImage ):
-				logger.info( "%10s : %36s@%d : %30p",
-				             "Image",
-				             r.first->data->debug_name,
-				             1 << r.first->data->num_samples,
-				             r.second.as.buffer );
+				logger().info( "%10s : %36s@%d : %30p",
+				               "Image",
+				               r.first->data->debug_name,
+				               1 << r.first->data->num_samples,
+				               r.second.as.buffer );
 				break;
 			case ( LeResourceType::eRtxBlas ):
-				logger.info( "%10s : %36s@%d",
-				             "RtxBLAS",
-				             r.first->data->debug_name );
+				logger().info( "%10s : %36s@%d",
+				               "RtxBLAS",
+				               r.first->data->debug_name );
 				break;
 			case ( LeResourceType::eRtxTlas ):
-				logger.info( "%10s : %36s@%d",
-				             "RtxTLAS",
-				             r.first->data->debug_name );
+				logger().info( "%10s : %36s@%d",
+				               "RtxTLAS",
+				               r.first->data->debug_name );
 				break;
 			}
 		}
@@ -4235,7 +4240,7 @@ static void frame_allocate_transient_resources( BackendFrameData& frame, VkDevic
 				// If the format is still undefined at this point, we can only throw our hands up in the air...
 				//
 				if ( imageFormat == le::Format::eUndefined ) {
-					logger.warn( "Cannot create default view for image: '%s', as format is unspecified", r->data->debug_name );
+					logger().warn( "Cannot create default view for image: '%s', as format is unspecified", r->data->debug_name );
 					continue;
 				}
 
@@ -4393,7 +4398,7 @@ static void frame_allocate_transient_resources( BackendFrameData& frame, VkDevic
 				frame.textures_per_pass[ pass_idx ][ textureId ] = tex;
 			} else {
 				// The frame already has an element with such a texture id.
-				logger.error( "texture '%s' must have been defined multiple times using identical id within the same renderpass.", textureId );
+				logger().error( "texture '%s' must have been defined multiple times using identical id within the same renderpass.", textureId );
 				assert( false && "texture must have been defined multiple times using identical id within the same renderpass." );
 			}
 		} // end for all textureIds
@@ -4639,9 +4644,9 @@ static le_staging_allocator_o* backend_get_staging_allocator( le_backend_o* self
 }
 
 void debug_print_le_pipeline_layout_info( le_pipeline_layout_info* info ) {
-	logger.info( "pipeline layout: %x", info->pipeline_layout_key );
+	logger().info( "pipeline layout: %x", info->pipeline_layout_key );
 	for ( size_t i = 0; i != info->set_layout_count; i++ ) {
-		logger.info( "set layout key : %x", info->set_layout_keys[ i ] );
+		logger().info( "set layout key : %x", info->set_layout_keys[ i ] );
 	}
 }
 
@@ -4711,11 +4716,11 @@ static bool updateArguments( const VkDevice&                    device,
 				case le::DescriptorType::eStorageBuffer:        // fall-through
 					if ( NULL_VK_BUFFER == a.bufferInfo.buffer ) {
 						// if buffer must have valid buffer bound
-						logger.error( "Buffer argument '%s', at set=%d, binding=%d, array_index=%d not set, not valid, or missing.",
-						              get_argument_name( setId, a.bindingNumber ),
-						              setId,
-						              a.bindingNumber,
-						              a.arrayIndex );
+						logger().error( "Buffer argument '%s', at set=%d, binding=%d, array_index=%d not set, not valid, or missing.",
+						                get_argument_name( setId, a.bindingNumber ),
+						                setId,
+						                a.bindingNumber,
+						                a.arrayIndex );
 						argumentsOk = false;
 					}
 					break;
@@ -4725,11 +4730,11 @@ static bool updateArguments( const VkDevice&                    device,
 					argumentsOk &= ( NULL_VK_IMAGE_VIEW != a.imageInfo.imageView ); // if sampler, must have valid image view
 					if ( NULL_VK_IMAGE_VIEW == a.imageInfo.imageView ) {
 						// if image - must have valid imageview bound
-						logger.error( "Image argument '%s', at set=%d, binding=%d, array_index=%d not set, not valid, or missing.",
-						              get_argument_name( setId, a.bindingNumber ),
-						              setId,
-						              a.bindingNumber,
-						              a.arrayIndex );
+						logger().error( "Image argument '%s', at set=%d, binding=%d, array_index=%d not set, not valid, or missing.",
+						                get_argument_name( setId, a.bindingNumber ),
+						                setId,
+						                a.bindingNumber,
+						                a.arrayIndex );
 						argumentsOk = false;
 					}
 					break;
@@ -4737,11 +4742,11 @@ static bool updateArguments( const VkDevice&                    device,
 					argumentsOk &= ( NULL_VK_ACCELERATION_STRUCTURE_KHR != a.accelerationStructureInfo.accelerationStructure );
 					if ( NULL_VK_ACCELERATION_STRUCTURE_KHR == a.accelerationStructureInfo.accelerationStructure ) {
 						// if image - must have valid acceleration structure bound
-						logger.error( "Acceleration Structure argument '%s', at set=%d, binding=%d, array_index=%d not set, not valid, or missing.",
-						              get_argument_name( setId, a.bindingNumber ),
-						              setId,
-						              a.bindingNumber,
-						              a.arrayIndex );
+						logger().error( "Acceleration Structure argument '%s', at set=%d, binding=%d, array_index=%d not set, not valid, or missing.",
+						                get_argument_name( setId, a.bindingNumber ),
+						                setId,
+						                a.bindingNumber,
+						                a.arrayIndex );
 						argumentsOk = false;
 					}
 
@@ -4930,7 +4935,7 @@ static void debug_print_command( void*& cmd ) {
 		os << " [" << std::hex << le_cmd->info.gpsoHandle << "]";
 	}
 
-	logger.info( "%s", os.str().c_str() );
+	logger().info( "%s", os.str().c_str() );
 };
 
 // convert 0xrrggbbaa color to float color
@@ -5141,7 +5146,7 @@ static void backend_acquire_swapchain_resources( le_backend_o* self, size_t fram
 				// We should destroy both swapchains for sure.
 				acquire_success                              = false;
 				local_swapchain_state.was_acquire_successful = false;
-				logger.error( "Could not acquire swapchain" );
+				logger().error( "Could not acquire swapchain" );
 				assert( false );
 			}
 		} else {
@@ -5218,12 +5223,12 @@ static void backend_acquire_swapchain_resources( le_backend_o* self, size_t fram
 	for ( auto p : previous_swapchain_state ) {
 		if ( p.second.present_complete ) {
 			frame.retired_semaphores.push_back( p.second.present_complete );
-			logger.debug( "Retired Present Complete Semaphore %p", p.second.present_complete );
+			logger().debug( "Retired Present Complete Semaphore %p", p.second.present_complete );
 			p.second.present_complete = nullptr;
 		}
 		if ( p.second.render_complete ) {
 			frame.retired_semaphores.push_back( p.second.render_complete );
-			logger.debug( "Retired Render Complete Semaphore %p", p.second.render_complete );
+			logger().debug( "Retired Render Complete Semaphore %p", p.second.render_complete );
 			p.second.render_complete = nullptr;
 		}
 	}
@@ -5274,17 +5279,17 @@ static void pass_insert_explicit_sync_ops( BackendFrameData const& frame, Backen
 				// --------| invariant: barrier is active.
 
 				// print out sync chain for sampled image
-				logger.info( "\t Explicit Barrier for: %s (s: %d)", op.resource->data->debug_name, 1 << op.resource->data->num_samples );
-				logger.info( "\t % 3s : % 30s : % 30s : % 10s", "#", "visible_access", "write_stage", "layout" );
+				logger().info( "\t Explicit Barrier for: %s (s: %d)", op.resource->data->debug_name, 1 << op.resource->data->num_samples );
+				logger().info( "\t % 3s : % 30s : % 30s : % 10s", "#", "visible_access", "write_stage", "layout" );
 
 				auto const& syncChain = frame.syncChainTable.at( op.resource );
 
 				for ( size_t i = op.sync_chain_offset_initial; i <= op.sync_chain_offset_final; i++ ) {
 					auto const& s = syncChain[ i ];
-					logger.info( "\t % 3d : % 30s : % 30s : % 10s", i,
-					             to_string_vk_access_flags2( s.visible_access ).c_str(),
-					             to_string_vk_pipeline_stage_flags2( s.stage ).c_str(),
-					             to_str_vk_image_layout( s.layout ) );
+					logger().info( "\t % 3d : % 30s : % 30s : % 10s", i,
+					               to_string_vk_access_flags2( s.visible_access ).c_str(),
+					               to_string_vk_pipeline_stage_flags2( s.stage ).c_str(),
+					               to_str_vk_image_layout( s.layout ) );
 				}
 			}
 
@@ -5331,7 +5336,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 	ZoneScoped;
 
 	if ( LE_PRINT_DEBUG_MESSAGES ) {
-		logger.debug( "** Process Frame #%8d **", frameIndex );
+		logger().debug( "** Process Frame #%8d **", frameIndex );
 	}
 
 	using namespace le_renderer;   // for encoder
@@ -5496,13 +5501,13 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 		}
 
 		if ( LE_PRINT_DEBUG_MESSAGES ) {
-			logger.info( "Listing queue batches and their queue affinity:" );
+			logger().info( "Listing queue batches and their queue affinity:" );
 			int i = 0;
 			for ( auto const& qf : frame.queue_submission_data ) {
-				logger.info( "#%i, [%-50s]", i, to_string_vk_queue_flags( qf.queue_flags ).c_str() );
+				logger().info( "#%i, [%-50s]", i, to_string_vk_queue_flags( qf.queue_flags ).c_str() );
 				i++;
 			}
-			logger.info( "" );
+			logger().info( "" );
 		}
 	}
 
@@ -5569,7 +5574,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 			}
 
 			if ( LE_PRINT_DEBUG_MESSAGES ) {
-				logger.info( "*** Frame %d *** Queue %d *** Renderpass '%s'", frame.frameNumber, submission.queue_idx, pass.debugName );
+				logger().info( "*** Frame %d *** Queue %d *** Renderpass '%s'", frame.frameNumber, submission.queue_idx, pass.debugName );
 			}
 			pass_insert_explicit_sync_ops( frame, submission, pass.sync_ops_before_pass, cmd );
 
@@ -5660,7 +5665,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 
 								// Print pipeline debug info when a new pipeline gets bound.
 
-								logger.info( "Requested pipeline: %x ", le_cmd->info.gpsoHandle );
+								logger().info( "Requested pipeline: %x ", le_cmd->info.gpsoHandle );
 								debug_print_le_pipeline_layout_info( &requestedPipeline.layout_info );
 							}
 
@@ -6261,7 +6266,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 								static uint64_t argument_id_local = 0;
 								if ( argument_id_local == wrong_argument )
 									return;
-								logger.warn( "Process_frame: \x1b[38;5;209mInvalid argument name: '%s'\x1b[0m id: %x", le_get_argument_name_from_hash( argument ), argument );
+								logger().warn( "Process_frame: \x1b[38;5;209mInvalid argument name: '%s'\x1b[0m id: %x", le_get_argument_name_from_hash( argument ), argument );
 								argument_id_local = argument;
 							}( argument_name_id );
 							break;
@@ -6318,10 +6323,10 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 						}
 
 						if ( b == argumentState.binding_infos.end() ) {
-							logger.warn( "Invalid texture argument name id: %x, '%s'", argument_name_id, le_get_argument_name_from_hash( argument_name_id ) );
+							logger().warn( "Invalid texture argument name id: %x, '%s'", argument_name_id, le_get_argument_name_from_hash( argument_name_id ) );
 
 							for ( auto const& b : argumentState.binding_infos ) {
-								logger.warn( "\tAvailable argument: %s", le_get_argument_name_from_hash( b.name_hash ) );
+								logger().warn( "\tAvailable argument: %s", le_get_argument_name_from_hash( b.name_hash ) );
 							}
 
 							break;
@@ -6353,8 +6358,8 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 							auto foundTex = frame.textures_per_pass[ passIndex ].find( le_cmd->info.texture_id );
 							if ( foundTex == frame.textures_per_pass[ passIndex ].end() ) {
 								using namespace le_renderer;
-								logger.error( "Could not find requested texture: '%s', ignoring texture binding command",
-								              renderer_i.texture_handle_get_name( le_cmd->info.texture_id ) );
+								logger().error( "Could not find requested texture: '%s', ignoring texture binding command",
+								                renderer_i.texture_handle_get_name( le_cmd->info.texture_id ) );
 								break;
 							}
 
@@ -6365,7 +6370,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 							bindingData->imageInfo.imageView   = foundTex->second.imageView;
 							bindingData->type                  = le::DescriptorType::eCombinedImageSampler;
 						} else {
-							logger.error( "Could not find binding at set: %d, binding: %d, array index: %d.", b->setIndex, b->binding, arrayIndex );
+							logger().error( "Could not find binding at set: %d, binding: %d, array index: %d.", b->setIndex, b->binding, arrayIndex );
 							assert( bindingData && "could not find specified binding." );
 						}
 					} break;
@@ -6384,7 +6389,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 						}
 
 						if ( b == argumentState.binding_infos.end() ) {
-							logger.warn( "Warning: Invalid image argument name id: %x", argument_name_id );
+							logger().warn( "Warning: Invalid image argument name id: %x", argument_name_id );
 							break;
 						}
 						auto arrayIndex = uint32_t( le_cmd->info.array_index );
@@ -6400,8 +6405,8 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 
 							auto foundImgView = frame.imageViews.find( le_cmd->info.image_id );
 							if ( foundImgView == frame.imageViews.end() ) {
-								logger.error( "Could not find image view for image: '%s', ignoring image binding command.",
-								              le_cmd->info.image_id->data->debug_name );
+								logger().error( "Could not find image view for image: '%s', ignoring image binding command.",
+								                le_cmd->info.image_id->data->debug_name );
 								break;
 							}
 
@@ -6414,7 +6419,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 							bindingData->type       = le::DescriptorType::eStorageImage;
 							bindingData->arrayIndex = uint32_t( le_cmd->info.array_index );
 						} else {
-							logger.error( "Could not find binding at set: %d, binding: %d.", b->setIndex, b->binding );
+							logger().error( "Could not find binding at set: %d, binding: %d.", b->setIndex, b->binding );
 							assert( bindingData && "Could not find specified binding" );
 						}
 
@@ -6433,7 +6438,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 						}
 
 						if ( b == argumentState.binding_infos.end() ) {
-							logger.warn( "Invalid tlas argument name id: %x", argument_name_id );
+							logger().warn( "Invalid tlas argument name id: %x", argument_name_id );
 							break;
 						}
 
@@ -6446,7 +6451,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 						if ( bindingData ) {
 							auto found_resource = frame.availableResources.find( le_cmd->info.tlas_id );
 							if ( found_resource == frame.availableResources.end() ) {
-								logger.error( "Could not find acceleration structure: '%s'. Ignoring top level acceleration structure binding command.", le_cmd->info.tlas_id->data->debug_name );
+								logger().error( "Could not find acceleration structure: '%s'. Ignoring top level acceleration structure binding command.", le_cmd->info.tlas_id->data->debug_name );
 								break;
 							}
 
@@ -6456,7 +6461,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 							bindingData->type                                            = le::DescriptorType::eAccelerationStructureKhr;
 							bindingData->arrayIndex                                      = uint32_t( le_cmd->info.array_index );
 						} else {
-							logger.error( "Could not find binding at set: %d, binding: %d.", b->setIndex, b->binding );
+							logger().error( "Could not find binding at set: %d, binding: %d.", b->setIndex, b->binding );
 						}
 
 					} break;
@@ -7126,7 +7131,7 @@ static void backend_process_frame( le_backend_o* self, size_t frameIndex ) {
 			}
 
 			if ( LE_PRINT_DEBUG_MESSAGES ) {
-				logger.info( "*** Frame %d *** Queue %d *** EndRenderpass '%s'", frame.frameNumber, submission.queue_idx, pass.debugName );
+				logger().info( "*** Frame %d *** Queue %d *** EndRenderpass '%s'", frame.frameNumber, submission.queue_idx, pass.debugName );
 			}
 			pass_insert_explicit_sync_ops( frame, submission, pass.sync_ops_after_pass, cmd );
 
@@ -7538,8 +7543,8 @@ static void backend_submit_queue_transfer_ops( le_backend_o* self, size_t frameI
 
 	if ( LE_PRINT_DEBUG_MESSAGES ) {
 		for ( auto& [ le_resource_handle, qf ] : self->resource_queue_family_ownership[ 0 ] ) {
-			logger.info( "*[%4d]* Resource : [%s] qf%d ",
-			             frameIndex, le_resource_handle->data->debug_name, qf );
+			logger().info( "*[%4d]* Resource : [%s] qf%d ",
+			               frameIndex, le_resource_handle->data->debug_name, qf );
 		}
 	}
 
@@ -7560,7 +7565,7 @@ static void backend_submit_queue_transfer_ops( le_backend_o* self, size_t frameI
 				// definitely write to the back buffer
 				self->resource_queue_family_ownership[ 1 ][ r ] = submission_queue_family_idx;
 
-				// logger.info( "*[%4d]* Resource : [%s] qf%d -> qf%d (used with queue index:%d)",
+				// logger().info( "*[%4d]* Resource : [%s] qf%d -> qf%d (used with queue index:%d)",
 				//              frameIndex, r->data->debug_name, found_queue_family_ownership->second, submission_queue_family_idx, submission_data.queue_idx );
 
 				// There was already an element in there - we must compare
@@ -7594,18 +7599,18 @@ static void backend_submit_queue_transfer_ops( le_backend_o* self, size_t frameI
 							}
 
 						} else {
-							logger.error( "resource `%s` cannot be owned by two differing queue families: %d != %d",
-							              r->data->debug_name,
-							              change.dst_queue_family_index,
-							              transfer_it->second.dst_queue_family_index );
+							logger().error( "resource `%s` cannot be owned by two differing queue families: %d != %d",
+							                r->data->debug_name,
+							                change.dst_queue_family_index,
+							                transfer_it->second.dst_queue_family_index );
 							assert( change.dst_queue_family_index == transfer_it->second.dst_queue_family_index && "resource cannot be owned by more than one queue family" );
 						}
 					}
 
 					if ( LE_PRINT_DEBUG_MESSAGES ) {
 						// update entry, so that next frame can compare against the current frame.
-						logger.info( "*[%4d]* Resource ownership change: [%s] qf%d -> qf%d (used with queue index:%d)",
-						             frameIndex, r->data->debug_name, found_queue_family_ownership->second, submission_queue_family_idx, submission_data.queue_idx );
+						logger().info( "*[%4d]* Resource ownership change: [%s] qf%d -> qf%d (used with queue index:%d)",
+						               frameIndex, r->data->debug_name, found_queue_family_ownership->second, submission_queue_family_idx, submission_data.queue_idx );
 					}
 				}
 			}
@@ -7704,7 +7709,7 @@ static void backend_submit_queue_transfer_ops( le_backend_o* self, size_t frameI
 			ownership_transfer_cmd_pools[ i ] = pool;
 			if ( LE_PRINT_DEBUG_MESSAGES ) {
 				for ( auto const& b : pool->buffers ) {
-					logger.info( "[%3d] allocated command buffer: %p", frame.frameNumber, b );
+					logger().info( "[%3d] allocated command buffer: %p", frame.frameNumber, b );
 				}
 			}
 		}
@@ -8219,7 +8224,7 @@ static bool backend_dispatch_frame( le_backend_o* self, size_t frameIndex ) {
 	}
 
 	if ( LE_PRINT_DEBUG_MESSAGES ) {
-		logger.info( "*** Dispatched frame %d", frame.frameNumber );
+		logger().info( "*** Dispatched frame %d", frame.frameNumber );
 	}
 
 	if ( frame.must_create_queues_dot_graph ) {

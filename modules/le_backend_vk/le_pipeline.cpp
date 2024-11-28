@@ -23,12 +23,18 @@
 #include "le_log.h"
 #include "3rdparty/src/spooky/SpookyV2.h" // for hashing renderpass gestalt, so that we can test for *compatible* renderpasses
 
-static constexpr auto LOGGER_LABEL = "le_pipeline";
-
 #include <vulkan/vulkan.h>
 #include "private/le_backend_vk/le_backend_types_pipeline.inl"
 
 #include "le_tracy.h"
+
+static constexpr auto LOGGER_LABEL = "le_pipeline";
+
+static le::Log& logger() {
+	// Enforce lazy initialization for logger().oblect
+	static auto logger = le::Log( LOGGER_LABEL );
+	return logger;
+};
 
 typedef void ( *file_watcher_callback_fun_t )( char const*, void* );
 
@@ -433,17 +439,15 @@ static inline VkShaderStageFlagBits le_to_vk( const le::ShaderStage& stage ) {
 /// \note    returns an empty vector if not successful
 static bool load_file( const std::filesystem::path& file_path, std::vector<char>& result ) {
 
-	static auto logger = LeLog( LOGGER_LABEL );
-
 	size_t        fileSize = 0;
 	std::ifstream file( file_path, std::ios::in | std::ios::binary | std::ios::ate );
 
 	if ( !file.is_open() ) {
-		logger.error( "Unable to open file: '%s'", file_path.c_str() );
+		logger().error( "Unable to open file: '%s'", file_path.c_str() );
 		return false;
 	}
 
-	logger.debug( "Opened file : '%s'", std::filesystem::canonical( ( file_path ) ).c_str() );
+	logger().debug( "Opened file : '%s'", std::filesystem::canonical( ( file_path ) ).c_str() );
 
 	// ----------| invariant: file is open
 
@@ -595,13 +599,11 @@ static void le_pipeline_cache_flag_affected_modules_for_source_path( le_shader_m
 	// find all modules from dependencies set
 	// insert into list of modified modules.
 
-	static auto logger = LeLog( LOGGER_LABEL );
-
 	auto lck = std::unique_lock( self->protected_module_dependencies.mtx );
 
 	if ( 0 == self->protected_module_dependencies.moduleDependencies.count( shader_source_file_path ) ) {
 		// -- no matching dependencies.
-		logger.info( "Shader code update detected, but no modules using shader source file: '%s'", shader_source_file_path );
+		logger().info( "Shader code update detected, but no modules using shader source file: '%s'", shader_source_file_path );
 		return;
 	}
 
@@ -621,8 +623,7 @@ static void le_shader_file_watcher_on_callback( const char* path, void* user_dat
 	auto shader_manager = static_cast<le_shader_manager_o*>( user_data );
 	// call a method on backend to tell it that the file path has changed.
 	// backend to figure out which modules are affected.
-	static auto logger = LeLog( LOGGER_LABEL );
-	logger.debug( "Source file update detected: '%s'", path );
+	logger().debug( "Source file update detected: '%s'", path );
 	le_pipeline_cache_flag_affected_modules_for_source_path( shader_manager, path );
 }
 // ----------------------------------------------------------------------
@@ -637,11 +638,10 @@ static void le_pipeline_cache_set_module_dependencies_for_watched_files( le_shad
 	// we do this by, for each new module, we record all its source files, and we store
 	// a reference back to the module.
 	//
-	static auto logger = LeLog( LOGGER_LABEL );
-	auto        lck    = std::unique_lock( self->protected_module_dependencies.mtx );
+	auto lck = std::unique_lock( self->protected_module_dependencies.mtx );
 
 	if ( !source_files.empty() ) {
-		logger.debug( "Shader module (%p):", module );
+		logger().debug( "Shader module (%p):", module );
 	}
 
 	for ( const auto& s : source_files ) {
@@ -665,10 +665,10 @@ static void le_pipeline_cache_set_module_dependencies_for_watched_files( le_shad
 			self->protected_module_dependencies.moduleWatchIds[ s ]           = watch_id;
 			self->protected_module_dependencies.moduleWatchCallbackAddrs[ s ] = settings.callback_fun;
 
-			logger.debug( "\t (+) watch for file '%s'", std::filesystem::relative( s ).c_str() );
+			logger().debug( "\t (+) watch for file '%s'", std::filesystem::relative( s ).c_str() );
 		}
 
-		logger.debug( "\t + '%s'", std::filesystem::relative( s ).c_str() );
+		logger().debug( "\t + '%s'", std::filesystem::relative( s ).c_str() );
 
 		self->protected_module_dependencies.moduleDependencies[ s ].insert( module );
 	}
@@ -677,7 +677,6 @@ static void le_pipeline_cache_set_module_dependencies_for_watched_files( le_shad
 // Thread-safety: needs exclusive access to shader_manager->moduleDependencies for full duration.
 // We use a lock for this reason.
 static void le_pipeline_cache_remove_module_from_dependencies( le_shader_manager_o* self, le_shader_module_handle module ) {
-	static auto logger = LeLog( LOGGER_LABEL );
 	// iterate over all module dependencies in shader manager, remove the module.
 	// then remove any file watchers which have no modules left.
 	auto lck = std::unique_lock( self->protected_module_dependencies.mtx );
@@ -702,7 +701,7 @@ static void le_pipeline_cache_remove_module_from_dependencies( le_shader_manager
 			// remove the entry which refers to the callback forwarder
 			self->protected_module_dependencies.moduleWatchCallbackAddrs.erase( d->first );
 
-			logger.debug( "\t (-) watch for file '%s'", std::filesystem::relative( d->first ).c_str() );
+			logger().debug( "\t (-) watch for file '%s'", std::filesystem::relative( d->first ).c_str() );
 
 			// remove file entry
 			d = self->protected_module_dependencies.moduleDependencies.erase( d ); // must do this because we're erasing from within
@@ -786,14 +785,13 @@ inline static uint64_t le_shader_bindings_calculate_hash( le_shader_binding_info
 
 static void shader_module_update_reflection( le_shader_module_o* module ) {
 
-	static auto                         logger = LeLog( LOGGER_LABEL );
 	std::vector<le_shader_binding_info> bindings; // <- gets stored in module at end
 
 	SpvReflectShaderModule spv_module;
 	SpvReflectResult       spv_result{};
 
 	if ( module->spirv.empty() ) {
-		logger.error( "No SPIR-V code for module created from filepath: '%s'", module->filepath.c_str() );
+		logger().error( "No SPIR-V code for module created from filepath: '%s'", module->filepath.c_str() );
 	};
 
 	spv_result = spvReflectCreateShaderModule( module->spirv.size() * sizeof( uint32_t ), module->spirv.data(), &spv_module );
@@ -906,7 +904,7 @@ static void shader_module_update_reflection( le_shader_module_o* module ) {
 				// will be replaced by an actual immutable VkSampler when creating the
 				// DescriptorSet, see `le_pipeline_cache_produce_descriptor_set_layout`
 
-				logger.info( "Detected immutable sampler: [%s]", binding->name );
+				logger().info( "Detected immutable sampler: [%s]", binding->name );
 				info.immutable_sampler = VkSampler( le_shader_module_o::ImmutableSamplerRequestedValue::eYcBcR );
 			}
 
@@ -933,7 +931,7 @@ static void shader_module_update_reflection( le_shader_module_o* module ) {
 	if ( spv_module.push_constant_block_count > 0 ) {
 
 		if ( spv_module.push_constant_block_count != 1 ) {
-			logger.error( "Push constant block count must be either 0 or 1, but is %d.", spv_module.push_constant_block_count );
+			logger().error( "Push constant block count must be either 0 or 1, but is %d.", spv_module.push_constant_block_count );
 			assert( false && "push constannt block count must be either 0 or 1" );
 		}
 
@@ -952,7 +950,6 @@ static void shader_module_update_reflection( le_shader_module_o* module ) {
 
 /// \brief compare sorted bindings and raise the alarm if two successive bindings alias locations
 static bool shader_module_check_bindings_valid( le_shader_binding_info const* bindings, size_t numBindings ) {
-	static auto logger = LeLog( LOGGER_LABEL );
 
 	// -- perform sanity check on bindings - bindings must be unique:
 	// (location+binding cannot be shared between shader uniforms)
@@ -969,8 +966,8 @@ static bool shader_module_check_bindings_valid( le_shader_binding_info const* bi
 
 		if ( b->setIndex == b_prev->setIndex &&
 		     b->binding == b_prev->binding ) {
-			logger.error( "Illegal shader bindings detected, rejecting shader." );
-			logger.error( "Duplicate bindings for set: %d, binding %d", b->setIndex, b->binding );
+			logger().error( "Illegal shader bindings detected, rejecting shader." );
+			logger().error( "Duplicate bindings for set: %d, binding %d", b->setIndex, b->binding );
 			return false;
 		}
 
@@ -990,7 +987,6 @@ static bool shader_module_check_bindings_valid( le_shader_binding_info const* bi
 //
 static std::vector<le_shader_binding_info> shader_modules_merge_bindings( le_shader_manager_o* shader_manager, le_shader_module_handle const* shader_handles, size_t shader_handles_count ) {
 
-	static auto logger = LeLog( LOGGER_LABEL );
 	// maxNumBindings holds the upper bound for the total number of bindings
 	// assuming no overlaps in bindings between shader stages.
 
@@ -1083,9 +1079,9 @@ static std::vector<le_shader_binding_info> shader_modules_merge_bindings( le_sha
 
 					if ( b.stage_bits < last_binding->stage_bits ) {
 						last_binding->name_hash = b.name_hash;
-						logger.warn( "Name for binding at set: %d, location: %d did not match.", b.setIndex, b.binding );
-						logger.warn( "Affected files:\n%s",
-						             get_filepaths_affected_by_message( shader_stages, uint32_t( b.stage_bits | last_binding->stage_bits ) ).c_str() );
+						logger().warn( "Name for binding at set: %d, location: %d did not match.", b.setIndex, b.binding );
+						logger().warn( "Affected files:\n%s",
+						               get_filepaths_affected_by_message( shader_stages, uint32_t( b.stage_bits | last_binding->stage_bits ) ).c_str() );
 					}
 				}
 
@@ -1282,8 +1278,6 @@ static le_shader_module_handle le_shader_manager_create_shader_module_from_spirv
     void*                           specialization_map_data,
     uint32_t                        specialization_map_data_num_bytes ) {
 
-	static auto logger = LeLog( LOGGER_LABEL );
-
 	// We use the canonical path to store a fingerprint of the file
 
 	// We include specialization data into hash calculation for this module, because specialization data
@@ -1338,7 +1332,7 @@ static le_shader_module_handle le_shader_manager_create_shader_module_from_spirv
 	if ( cached_module && cached_module->hash == module.hash ) {
 		// A module with the same handle already exists, and the cached
 		// version has the same hash as our new version: no more work to do.
-		logger.info( "Found cached shader module for binary shader '%x'.", handle );
+		logger().info( "Found cached shader module for binary shader '%x'.", handle );
 		return handle;
 	}
 
@@ -1348,7 +1342,7 @@ static le_shader_module_handle le_shader_manager_create_shader_module_from_spirv
 
 	if ( false == shader_module_check_bindings_valid( module.bindings.data(), module.bindings.size() ) ) {
 		// we must clean up, and report an error
-		logger.error( "Shader module reports invalid bindings" );
+		logger().error( "Shader module reports invalid bindings" );
 		assert( false );
 		return nullptr;
 	}
@@ -1363,15 +1357,15 @@ static le_shader_module_handle le_shader_manager_create_shader_module_from_spirv
 	};
 
 	vkCreateShaderModule( self->device, &createInfo, nullptr, &module.module );
-	logger.info( "Vk shader module created %p", module.module );
+	logger().info( "Vk shader module created %p", module.module );
 
 	if ( cached_module == nullptr ) {
 		// there is no prior module - let's create a module and try to retain it in shader manager
 		bool insert_successful = self->shaderModules.try_insert( handle, &module );
 		if ( !insert_successful ) {
-			logger.error( "Could not retain shader module" );
+			logger().error( "Could not retain shader module" );
 			vkDestroyShaderModule( self->device, module.module, nullptr );
-			logger.debug( "Vk shader module destroyed %p", module.module );
+			logger().debug( "Vk shader module destroyed %p", module.module );
 			return nullptr;
 		}
 	} else {
@@ -1384,7 +1378,7 @@ static le_shader_module_handle le_shader_manager_create_shader_module_from_spirv
 		*cached_module  = module;
 		// ... and delete the old module
 		vkDestroyShaderModule( self->device, old_module.module, nullptr );
-		logger.debug( "Vk shader module destroyed %p", old_module.module );
+		logger().debug( "Vk shader module destroyed %p", old_module.module );
 	}
 
 	return handle;
@@ -1406,8 +1400,6 @@ static le_shader_module_handle le_shader_manager_create_shader_module(
     uint32_t                          specialization_map_entries_count,
     void*                             specialization_map_data,
     uint32_t                          specialization_map_data_num_bytes ) {
-
-	static auto logger = LeLog( LOGGER_LABEL );
 
 	// We use the canonical path to store a fingerprint of the file
 	auto canonical_path_as_string = std::filesystem::canonical( path ).string();
@@ -1446,7 +1438,7 @@ static le_shader_module_handle le_shader_manager_create_shader_module(
 	std::vector<char> raw_file_data;
 
 	if ( !load_file( canonical_path_as_string, raw_file_data ) ) {
-		logger.error( "Could not load shader file: '%s'", path );
+		logger().error( "Could not load shader file: '%s'", path );
 		assert( false && "file loading was unsuccessful" );
 		return nullptr;
 	}
@@ -1481,7 +1473,7 @@ static le_shader_module_handle le_shader_manager_create_shader_module(
 	if ( cached_module && cached_module->hash == module.hash ) {
 		// A module with the same handle already exists, and the cached
 		// version has the same hash as our new version: no more work to do.
-		logger.info( "Found cached shader module for '%s'.", path );
+		logger().info( "Found cached shader module for '%s'.", path );
 		return handle;
 	}
 
@@ -1491,7 +1483,7 @@ static le_shader_module_handle le_shader_manager_create_shader_module(
 
 	if ( false == shader_module_check_bindings_valid( module.bindings.data(), module.bindings.size() ) ) {
 		// we must clean up, and report an error
-		logger.error( "Shader module reports invalid bindings" );
+		logger().error( "Shader module reports invalid bindings" );
 		assert( false );
 		return nullptr;
 	}
@@ -1506,15 +1498,15 @@ static le_shader_module_handle le_shader_manager_create_shader_module(
 	};
 
 	vkCreateShaderModule( self->device, &createInfo, nullptr, &module.module );
-	logger.info( "Vk shader module created %p", module.module );
+	logger().info( "Vk shader module created %p", module.module );
 
 	if ( cached_module == nullptr ) {
 		// there is no prior module - let's create a module and try to retain it in shader manager
 		bool insert_successful = self->shaderModules.try_insert( handle, &module );
 		if ( !insert_successful ) {
-			logger.error( "Could not retain shader module" );
+			logger().error( "Could not retain shader module" );
 			vkDestroyShaderModule( self->device, module.module, nullptr );
-			logger.debug( "Vk shader module destroyed %p", module.module );
+			logger().debug( "Vk shader module destroyed %p", module.module );
 			return nullptr;
 		}
 	} else {
@@ -1527,7 +1519,7 @@ static le_shader_module_handle le_shader_manager_create_shader_module(
 		*cached_module  = module;
 		// ... and delete the old module
 		vkDestroyShaderModule( self->device, old_module.module, nullptr );
-		logger.debug( "Vk shader module destroyed %p", old_module.module );
+		logger().debug( "Vk shader module destroyed %p", old_module.module );
 	}
 
 	// -- add all source files for this file to the list of watched
@@ -1542,15 +1534,14 @@ static le_shader_module_handle le_shader_manager_create_shader_module(
 // called via decoder / produce_frame - only if we create a vkPipeline
 static VkPipelineLayout le_pipeline_manager_get_pipeline_layout( le_pipeline_manager_o* self, le_shader_module_handle const* shader_modules, size_t numModules ) {
 
-	static auto logger             = LeLog( LOGGER_LABEL );
-	uint64_t    pipelineLayoutHash = shader_modules_get_pipeline_layout_hash( self->shaderManager, shader_modules, numModules );
+	uint64_t pipelineLayoutHash = shader_modules_get_pipeline_layout_hash( self->shaderManager, shader_modules, numModules );
 
 	auto foundLayout = self->pipelineLayouts.try_find( pipelineLayoutHash );
 
 	if ( foundLayout ) {
 		return *foundLayout;
 	} else {
-		logger.error( "Could not find pipeline layout with hash: %x", pipelineLayoutHash );
+		logger().error( "Could not find pipeline layout with hash: %x", pipelineLayoutHash );
 		assert( false );
 		return nullptr;
 	}
@@ -1919,7 +1910,6 @@ static VkPipeline le_pipeline_cache_create_rtx_pipeline( le_pipeline_manager_o* 
 
 /// \brief returns hash key for given bindings, creates and retains new vkDescriptorSetLayout inside backend if necessary
 static uint64_t le_pipeline_cache_produce_descriptor_set_layout( le_pipeline_manager_o* self, std::vector<le_shader_binding_info> const& bindings, VkDescriptorSetLayout* layout ) {
-	static auto logger = LeLog( LOGGER_LABEL );
 
 	auto& descriptorSetLayouts = self->descriptorSetLayouts; // FIXME: this method only needs rw access to this, and the device
 
@@ -2030,7 +2020,7 @@ static uint64_t le_pipeline_cache_produce_descriptor_set_layout( le_pipeline_man
 
 				VkResult result = vkCreateSampler( self->device, &sampler_create_info, nullptr, maybe_immutable_sampler );
 				if ( result != VK_SUCCESS ) {
-					logger.error( "could not create immutable sampler" );
+					logger().error( "could not create immutable sampler" );
 				} else {
 					immutable_samplers.push_back( maybe_immutable_sampler );
 				}
@@ -2046,7 +2036,7 @@ static uint64_t le_pipeline_cache_produce_descriptor_set_layout( le_pipeline_man
 
 			if ( maybe_immutable_sampler && binding.descriptorCount > 1 ) {
 				binding.descriptorCount = 1;
-				logger.warn( "If binding has an immutable sampler, it must have just a single binding." );
+				logger().warn( "If binding has an immutable sampler, it must have just a single binding." );
 			}
 
 			vk_bindings.emplace_back( std::move( binding ) );
@@ -2332,7 +2322,6 @@ static le_pipeline_and_layout_info_t le_pipeline_manager_produce_graphics_pipeli
 	// was tainted. We could keep an internal table of modules -> gpso and taint any gpso that made use of
 	// a changed module.
 
-	static auto                   logger                   = LeLog( LOGGER_LABEL );
 	le_pipeline_and_layout_info_t pipeline_and_layout_info = {};
 
 	// -- 0. Fetch pso from cache using its hash key
@@ -2379,7 +2368,7 @@ static le_pipeline_and_layout_info_t le_pipeline_manager_produce_graphics_pipeli
 	} else {
 		// -- if not, create pipeline in pipeline cache and store / retain it
 		pipeline_and_layout_info.pipeline = le_pipeline_cache_create_graphics_pipeline( self, pso, pass, subpass );
-		logger.info( "New VK Graphics Pipeline created: %p", pipeline_hash );
+		logger().info( "New VK Graphics Pipeline created: %p", pipeline_hash );
 		bool result = self->pipelines.try_insert( pipeline_hash, &pipeline_and_layout_info.pipeline );
 		assert( result && " pipeline insertion must be successful " );
 	}
@@ -2398,7 +2387,6 @@ static le_pipeline_and_layout_info_t le_pipeline_manager_produce_graphics_pipeli
 static le_pipeline_and_layout_info_t le_pipeline_manager_produce_rtx_pipeline( le_pipeline_manager_o* self, le_rtxpso_handle pso_handle, char** maybe_shader_group_data ) {
 	le_pipeline_and_layout_info_t pipeline_and_layout_info = {};
 
-	static auto logger = LeLog( LOGGER_LABEL );
 	// -- 0. Fetch pso from cache using its hash key
 	rtx_pipeline_state_o const* pso = self->rtxPso.try_find( pso_handle );
 	assert( pso );
@@ -2446,7 +2434,7 @@ static le_pipeline_and_layout_info_t le_pipeline_manager_produce_rtx_pipeline( l
 		// -- Pipeline not found: Create pipeline in pipeline cache and store / retain it
 		pipeline_and_layout_info.pipeline = le_pipeline_cache_create_rtx_pipeline( self, pso );
 
-		logger.info( "New VK RTX Graphics Pipeline created: %p", pipeline_hash );
+		logger().info( "New VK RTX Graphics Pipeline created: %p", pipeline_hash );
 
 		// Store pipeline in pipeline cache
 		bool result = self->pipelines.try_insert( pipeline_hash, &pipeline_and_layout_info.pipeline );
@@ -2500,7 +2488,7 @@ static le_pipeline_and_layout_info_t le_pipeline_manager_produce_rtx_pipeline( l
 
 			// we need to store this buffer with the pipeline - or at least associate is to the pso
 
-			logger.info( "Queried rtx shader group handles:" );
+			logger().info( "Queried rtx shader group handles:" );
 			size_t n_el = props.shaderGroupHandleSize / sizeof( uint32_t );
 
 			uint32_t* debug_handles = reinterpret_cast<uint32_t*>( handles + sizeof( LeShaderGroupDataHeader ) );
@@ -2509,7 +2497,7 @@ static le_pipeline_and_layout_info_t le_pipeline_manager_produce_rtx_pipeline( l
 				for ( size_t j = 0; j != n_el; j++ ) {
 					os << std::dec << *debug_handles++ << ", ";
 				}
-				logger.info( os.str().c_str() );
+				logger().info( os.str().c_str() );
 			}
 
 			*maybe_shader_group_data = handles;
@@ -2522,8 +2510,7 @@ static le_pipeline_and_layout_info_t le_pipeline_manager_produce_rtx_pipeline( l
 
 static le_pipeline_and_layout_info_t le_pipeline_manager_produce_compute_pipeline( le_pipeline_manager_o* self, le_cpso_handle cpso_handle ) {
 
-	static auto                     logger = LeLog( LOGGER_LABEL );
-	compute_pipeline_state_o const* pso    = self->computePso.try_find( cpso_handle );
+	compute_pipeline_state_o const* pso = self->computePso.try_find( cpso_handle );
 	assert( pso );
 
 	le_pipeline_and_layout_info_t pipeline_and_layout_info = {};
@@ -2560,7 +2547,7 @@ static le_pipeline_and_layout_info_t le_pipeline_manager_produce_compute_pipelin
 	} else {
 		// -- if not, create pipeline in pipeline cache and store / retain it
 		pipeline_and_layout_info.pipeline = le_pipeline_cache_create_compute_pipeline( self, pso );
-		logger.info( "New VK Compute Pipeline created: %p", pipeline_hash );
+		logger().info( "New VK Compute Pipeline created: %p", pipeline_hash );
 		bool result = self->pipelines.try_insert( pipeline_hash, &pipeline_and_layout_info.pipeline );
 		assert( result && "insertion must be successful" );
 	}
@@ -2790,8 +2777,6 @@ static le_pipeline_manager_o* le_pipeline_manager_create( le_backend_o* backend 
 
 static void le_pipeline_manager_destroy( le_pipeline_manager_o* self ) {
 
-	static auto logger = LeLog( LOGGER_LABEL );
-
 	le_shader_manager_destroy( self->shaderManager );
 	self->shaderManager = nullptr;
 
@@ -2808,11 +2793,11 @@ static void le_pipeline_manager_destroy( le_pipeline_manager_o* self ) {
 		    }
 		    if ( e->vk_descriptor_set_layout ) {
 			    vkDestroyDescriptorSetLayout( device, e->vk_descriptor_set_layout, nullptr );
-			    logger.info( "Destroyed VkDescriptorSetLayout: %p", e->vk_descriptor_set_layout );
+			    logger().info( "Destroyed VkDescriptorSetLayout: %p", e->vk_descriptor_set_layout );
 		    }
 		    if ( e->vk_descriptor_update_template ) {
 			    vkDestroyDescriptorUpdateTemplate( device, e->vk_descriptor_update_template, nullptr );
-			    logger.info( "Destroyed VkDescriptorUpdateTemplate: %p", e->vk_descriptor_update_template );
+			    logger().info( "Destroyed VkDescriptorUpdateTemplate: %p", e->vk_descriptor_update_template );
 		    }
 	    },
 	    &self->device );
@@ -2822,7 +2807,7 @@ static void le_pipeline_manager_destroy( le_pipeline_manager_o* self ) {
 	    []( VkPipelineLayout* e, void* user_data ) {
 		    auto device = *static_cast<VkDevice*>( user_data );
 		    vkDestroyPipelineLayout( device, *e, nullptr );
-		    logger.info( "Destroyed VkPipelineLayout: %p", *e );
+		    logger().info( "Destroyed VkPipelineLayout: %p", *e );
 	    },
 	    &self->device );
 
@@ -2833,7 +2818,7 @@ static void le_pipeline_manager_destroy( le_pipeline_manager_o* self ) {
 	    []( VkPipeline* p, void* user_data ) {
 		    auto device = *static_cast<VkDevice*>( user_data );
 		    vkDestroyPipeline( device, *p, nullptr );
-		    logger.info( "Destroyed VkPipeline: %p", *p );
+		    logger().info( "Destroyed VkPipeline: %p", *p );
 	    },
 	    &self->device );
 

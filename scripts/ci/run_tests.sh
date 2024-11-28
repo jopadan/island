@@ -27,7 +27,7 @@ error() {
 build_app(){
 	local build_dir=$1
 	local app_name=$2
-    local build_type=$3
+        local build_type=$3
 
 	mkdir -p "$build_dir"
 	pushd "$build_dir" || exit
@@ -37,7 +37,9 @@ build_app(){
 	# we store the timestamp of the last built app executable
 	local previous_hash=0
 	local default_hash=0
-    default_hash=$(tar cf - modules "${app_name}" | md5sum)
+        
+        echo "app:'${app_name}'"
+        default_hash=$(tar cf - modules "${app_name}" | md5sum)
 	
 	# if no previous executable exists, we must still set the 
 	# previous_hash to something sensible
@@ -61,7 +63,8 @@ build_app(){
 		# ninja did okay.
 		# we must now check if we have a new artifact, or if its still the same.
 
-        local current_hash=$(tar cf - modules "${app_name}" | md5sum)
+                local current_hash
+                current_hash=$(tar cf - modules "${app_name}" | md5sum)
 		popd || exit
 
 		if [[ $current_hash != "$previous_hash" ]];
@@ -80,11 +83,13 @@ build_app(){
 }
 
 process_app(){
-	FILE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-	IFS=: read -ra app_names -d '' <<<"$1"
+    FILE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+    IFS=: read -ra app_names -d '' <<< "$1"
     local build_type="$2"
-    local app_dir=$(echo ${app_names[0]} | xargs)
-    local app_name=$(echo ${app_names[1]} | xargs)
+    local app_dir
+    app_dir=$(echo ${app_names[0]} | xargs)
+    local app_name
+    app_name=$(echo ${app_names[1]} | xargs)
 	local app_base_dir="$FILE_DIR/../../apps/$app_dir"
 
     # printf "'%s' '%s' '%s'\n" "${app_dir}" "${app_name}" "${app_base_dir}"

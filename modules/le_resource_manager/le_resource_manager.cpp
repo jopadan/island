@@ -16,7 +16,11 @@
 
 #include "shared/interfaces/le_image_decoder_interface.h"
 
-static auto logger = le::Log( "resource_manager" );
+static le::Log& logger() {
+	// Enforce lazy initialization for logger oblect
+	static auto logger = le::Log( "resource_manager" );
+	return logger;
+};
 
 struct le_image_decoder_format_o {
 	le::Format format;
@@ -152,7 +156,7 @@ static void execTransferPass( le_command_buffer_encoder_o* pEncoder, void* user_
 				bool result = le_format_infer_channels_and_num_type( decoder_format.format, &num_channels, &channel_data_type );
 
 				if ( false == result ) {
-					logger.error( "Could not infer format info from format: %s", le::to_str( decoder_format.format ) );
+					logger().error( "Could not infer format info from format: %s", le::to_str( decoder_format.format ) );
 					continue;
 				}
 
@@ -231,10 +235,10 @@ static void update_image_array_layer( le_resource_manager_o::image_data_layer_t&
 	}
 
 	if ( detected_format.format != requested_format.format ) {
-		logger.info( "File '%s' -> adjusting imported image format from %s to: %s",
-		             layer_data.path.c_str(),
-		             le::to_str( detected_format.format ),
-		             le::to_str( requested_format.format ) );
+		logger().info( "File '%s' -> adjusting imported image format from %s to: %s",
+		               layer_data.path.c_str(),
+		               le::to_str( detected_format.format ),
+		               le::to_str( requested_format.format ) );
 	}
 
 	layer_data.decoder_i->set_requested_format( layer_data.image_decoder, &requested_format );
@@ -259,7 +263,7 @@ static void update_image_array_layer( le_resource_manager_o::image_data_layer_t&
 static void le_resource_manager_file_watcher_callback( char const* path, void* user_data ) {
 	// we must update the image array layer in question
 	auto layer = static_cast<le_resource_manager_o::image_data_layer_t*>( user_data );
-	logger.info( "Reloading file: %s", path );
+	logger().info( "Reloading file: %s", path );
 	update_image_array_layer( *layer );
 }
 
@@ -409,7 +413,7 @@ static void le_resource_manager_add_item( le_resource_manager_o*          self,
 				l.decoder_i = le_resource_manager_get_decoder_interface_for_file( self, l.path );
 
 				if ( l.decoder_i == nullptr ) {
-					logger.warn( "Could not find image decoder for image layer sourced from file: '%s', skipping.", l.path.c_str() );
+					logger().warn( "Could not find image decoder for image layer sourced from file: '%s', skipping.", l.path.c_str() );
 					continue;
 				}
 
@@ -420,7 +424,7 @@ static void le_resource_manager_add_item( le_resource_manager_o*          self,
 				}
 
 				if ( item.image_info.image.format != l.image_info->format ) {
-					logger.error( "Layers must have consistent image format." );
+					logger().error( "Layers must have consistent image format." );
 					continue;
 				}
 
@@ -446,7 +450,7 @@ static void le_resource_manager_add_item( le_resource_manager_o*          self,
 		        item.image_info.image.extent.depth != 0 &&
 		        "Image extents for resource are not valid." );
 	} else {
-		logger.error( "Resource '%s' was added more than once.", ( *image_handle )->data->debug_name );
+		logger().error( "Resource '%s' was added more than once.", ( *image_handle )->data->debug_name );
 	}
 }
 
@@ -467,7 +471,7 @@ static bool le_resource_manager_remove_item( le_resource_manager_o* self, le_ima
 	auto it = self->resources.find( *resource_handle );
 
 	if ( it == self->resources.end() ) {
-		logger.warn( "Could not remove resource. Resource '%s' not found.", ( *resource_handle )->data->debug_name );
+		logger().warn( "Could not remove resource. Resource '%s' not found.", ( *resource_handle )->data->debug_name );
 		return false;
 	}
 
@@ -499,15 +503,15 @@ static void le_resource_manager_set_decoder_interface_for_filetype( le_resource_
 	std::string file_ext;
 	for ( char const* c = file_extension; *c != 0; c++ ) {
 		if ( ( *c ) == '.' ) {
-			logger.warn( "Do not include dot ('.') in file extension when updating image decoder interface: '%s'",
-			             file_extension );
+			logger().warn( "Do not include dot ('.') in file extension when updating image decoder interface: '%s'",
+			               file_extension );
 			continue;
 		}
 		file_ext.push_back( std::tolower( *c ) );
 	}
 
 	if ( file_ext.size() == 0 ) {
-		logger.warn( "Could not register file extension: '%s'", file_extension );
+		logger().warn( "Could not register file extension: '%s'", file_extension );
 		return;
 	}
 
@@ -519,9 +523,9 @@ static void le_resource_manager_set_decoder_interface_for_filetype( le_resource_
 	self->available_decoder_interfaces[ file_ext ] = decoder_interface;
 
 	if ( interface_did_already_exist ) {
-		logger.info( "Updated    interface for file extension: '%s'", file_ext.c_str() );
+		logger().info( "Updated    interface for file extension: '%s'", file_ext.c_str() );
 	} else {
-		logger.info( "Registered interface for file extension: '%s'", file_ext.c_str() );
+		logger().info( "Registered interface for file extension: '%s'", file_ext.c_str() );
 	}
 };
 

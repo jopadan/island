@@ -14,10 +14,16 @@
 
 static constexpr auto LOGGER_LABEL = "le_swapchain_khr";
 
+static le::Log& logger() {
+	// Enforce lazy initialization for logger().oblect
+	static auto logger = le::Log( LOGGER_LABEL );
+	return logger;
+};
+
 struct SurfaceProperties {
 	VkSurfaceFormat2KHR              windowSurfaceFormat = { .sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR };
 	VkSurfaceCapabilities2KHR        surfaceCapabilities = { .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR };
-	VkBool32                         presentSupported = VK_FALSE;
+	VkBool32                         presentSupported    = VK_FALSE;
 	std::vector<VkPresentModeKHR>    presentmodes;
 	std::vector<VkSurfaceFormat2KHR> availableSurfaceFormats; // note these need their sTypes initialized!
 };
@@ -46,7 +52,6 @@ struct khr_data_o {
 
 static void swapchain_query_surface_capabilities( le_swapchain_o* base ) {
 
-	static auto logger = LeLog( LOGGER_LABEL );
 	// we need to find out if the current physical device supports PRESENT
 
 	auto self = static_cast<khr_data_o* const>( base->data );
@@ -114,12 +119,12 @@ static void swapchain_query_surface_capabilities( le_swapchain_o* base ) {
 	}
 
 	if ( preferredSurfaceFormat != surfaceProperties.windowSurfaceFormat.surfaceFormat.format ) {
-		logger.warn( "Swapchain surface format was adapted to: %s", to_str( le::Format( surfaceProperties.windowSurfaceFormat.surfaceFormat.format ) ) );
+		logger().warn( "Swapchain surface format was adapted to: %s", to_str( le::Format( surfaceProperties.windowSurfaceFormat.surfaceFormat.format ) ) );
 	}
 
-	logger.info( "** Surface queried Extents: %d x %d",
-	             surfaceProperties.surfaceCapabilities.surfaceCapabilities.currentExtent.width,
-	             surfaceProperties.surfaceCapabilities.surfaceCapabilities.currentExtent.height );
+	logger().info( "** Surface queried Extents: %d x %d",
+	               surfaceProperties.surfaceCapabilities.surfaceCapabilities.currentExtent.width,
+	               surfaceProperties.surfaceCapabilities.surfaceCapabilities.currentExtent.height );
 
 	// always select the corresponding color space
 	surfaceProperties.windowSurfaceFormat.surfaceFormat.colorSpace =
@@ -131,17 +136,15 @@ static void swapchain_query_surface_capabilities( le_swapchain_o* base ) {
 static void swapchain_attach_images( le_swapchain_o* base ) {
 	auto self = static_cast<khr_data_o* const>( base->data );
 
-	static auto logger = LeLog( LOGGER_LABEL );
-
 	auto result = vkGetSwapchainImagesKHR( self->device, self->swapchainKHR, &self->mImagecount, nullptr );
 	assert( result == VK_SUCCESS );
 
 	if ( self->mImagecount ) {
 		self->mImageRefs.resize( self->mImagecount );
 		VkFenceCreateInfo fence_create_info = {
-			.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, // VkStructureType
-			.pNext = nullptr,                             // void *, optional
-			.flags = VK_FENCE_CREATE_SIGNALED_BIT,        // VkFenceCreateFlags, optional
+		    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, // VkStructureType
+		    .pNext = nullptr,                             // void *, optional
+		    .flags = VK_FENCE_CREATE_SIGNALED_BIT,        // VkFenceCreateFlags, optional
 		};
 		self->vk_present_fences.resize( self->mImagecount, {} );
 		for ( int i = 0; i != self->mImagecount; i++ ) {
@@ -150,11 +153,11 @@ static void swapchain_attach_images( le_swapchain_o* base ) {
 		result = vkGetSwapchainImagesKHR( self->device, self->swapchainKHR, &self->mImagecount, self->mImageRefs.data() );
 		assert( result == VK_SUCCESS );
 
-		// logger.info( "Images attached for KHR swapchain [%p]:", self->swapchainKHR );
+		// logger().info( "Images attached for KHR swapchain [%p]:", self->swapchainKHR );
 		//{
 		//	int i = 0;
 		//	for ( auto const& img : self->mImageRefs ) {
-		//		logger.info( "\t[%d] %p", i, img );
+		//		logger().info( "\t[%d] %p", i, img );
 		//		i++;
 		//	}
 		// }
@@ -175,8 +178,7 @@ static inline auto clamp( const T& val_, const T& min_, const T& max_ ) {
 
 static bool swapchain_khr_reset( le_swapchain_o* base, const le_swapchain_windowed_settings_t* settings_ ) {
 
-	static auto logger = LeLog( LOGGER_LABEL );
-	auto        self   = static_cast<khr_data_o*>( base->data );
+	auto self = static_cast<khr_data_o*>( base->data );
 
 	if ( settings_ ) {
 		self->mSettings = *settings_;
@@ -197,7 +199,7 @@ static bool swapchain_khr_reset( le_swapchain_o* base, const le_swapchain_window
 	if ( nullptr == self->vk_surface ) {
 
 		if ( nullptr == self->mSettings.window ) {
-			logger.error( "No window associated with LE_KHR_SWAPCHAIN %p.", base );
+			logger().error( "No window associated with LE_KHR_SWAPCHAIN %p.", base );
 			return false;
 		}
 
@@ -250,23 +252,23 @@ static bool swapchain_khr_reset( le_swapchain_o* base, const le_swapchain_window
 	}
 
 	if ( self->mPresentMode != presentModeHint ) {
-		logger.warn( "Could not switch to selected Swapchain Present Mode (%s), falling back to: %s",
-					 to_str( presentModeHint ),
-					 to_str( self->mPresentMode ) );
+		logger().warn( "Could not switch to selected Swapchain Present Mode (%s), falling back to: %s",
+		               to_str( presentModeHint ),
+		               to_str( self->mPresentMode ) );
 	}
 
 	// We require a minimum of minImageCount+1, so that in case minImageCount
 	// is 3 we can still acquire 2 images without blocking.
 	//
 	self->mImagecount = clamp( self->mSettings.base.imagecount_hint,
-							   surfaceCapabilities.minImageCount + 1,
-							   surfaceCapabilities.maxImageCount );
+	                           surfaceCapabilities.minImageCount + 1,
+	                           surfaceCapabilities.maxImageCount );
 
 	if ( self->mImagecount != self->mSettings.base.imagecount_hint ) {
-		logger.warn( "Number of swapchain images was adjusted to: %d. minImageCount: %d, maxImageCount: %d",
-					 self->mImagecount,
-					 surfaceCapabilities.minImageCount,
-					 surfaceCapabilities.maxImageCount );
+		logger().warn( "Number of swapchain images was adjusted to: %d. minImageCount: %d, maxImageCount: %d",
+		               self->mImagecount,
+		               surfaceCapabilities.minImageCount,
+		               surfaceCapabilities.maxImageCount );
 	}
 
 	VkSurfaceTransformFlagBitsKHR preTransform{};
@@ -299,13 +301,13 @@ static bool swapchain_khr_reset( le_swapchain_o* base, const le_swapchain_window
 	};
 
 	if ( vkCreateSwapchainKHR == nullptr ) {
-		logger.error( "Could not find function pointer to create swapchain. \n"
-					  "\t )\n"
-					  "\t ) Most likely you forgot to request the required Vulkan extensions before setting up the renderer. \n"
-					  "\t )\n"
-					  "\t ) Fix this by calling renderer.request_backend_capabilities() with any settings for swapchains you will want to use.\n"
-					  "\t ) This is done implicitly when creating swapchains by passing renderer settings (which contain swapchain settings) to le_renderer.setup().\n"
-					  "\t ) If you, however, decide to explicitly create a swapchain, you must query instance and device extensions **before** you setup the renderer." );
+		logger().error( "Could not find function pointer to create swapchain. \n"
+		                "\t )\n"
+		                "\t ) Most likely you forgot to request the required Vulkan extensions before setting up the renderer. \n"
+		                "\t )\n"
+		                "\t ) Fix this by calling renderer.request_backend_capabilities() with any settings for swapchains you will want to use.\n"
+		                "\t ) This is done implicitly when creating swapchains by passing renderer settings (which contain swapchain settings) to le_renderer.setup().\n"
+		                "\t ) If you, however, decide to explicitly create a swapchain, you must query instance and device extensions **before** you setup the renderer." );
 		assert( false );
 	}
 
@@ -320,7 +322,6 @@ static bool swapchain_khr_reset( le_swapchain_o* base, const le_swapchain_window
 static void swapchain_khr_destroy( le_swapchain_o* base );
 
 static le_swapchain_o* swapchain_khr_create( le_backend_o* backend, const le_swapchain_settings_t* settings ) {
-	static auto logger = LeLog( LOGGER_LABEL );
 
 	auto base  = new le_swapchain_o( le_swapchain_vk::api->swapchain_khr_i );
 	base->data = new khr_data_o{};
@@ -341,13 +342,13 @@ static le_swapchain_o* swapchain_khr_create( le_backend_o* backend, const le_swa
 	assert( settings->type == le_swapchain_settings_t::Type::LE_KHR_SWAPCHAIN );
 
 	if ( swapchain_khr_reset( base, reinterpret_cast<le_swapchain_windowed_settings_t const*>( settings ) ) ) {
-		logger.info( "Created Swapchain: %p, VkSwapchain: %p", base, self->swapchainKHR );
+		logger().info( "Created Swapchain: %p, VkSwapchain: %p", base, self->swapchainKHR );
 		return base;
 	}
 
 	// -----------| invariant: Something went wrong - we must clean up
 
-	logger.warn( "Could not create swapchain" );
+	logger().warn( "Could not create swapchain" );
 	swapchain_khr_destroy( base );
 	return nullptr;
 }
@@ -378,8 +379,7 @@ static le_swapchain_o* swapchain_create_from_old_swapchain( le_swapchain_o* old_
 
 	swapchain_khr_reset( new_swapchain, &new_data->mSettings );
 
-	static auto logger = LeLog( LOGGER_LABEL );
-	logger.info( "Created Swapchain %p from old Swapchain %p", new_swapchain, old_swapchain );
+	logger().info( "Created Swapchain %p from old Swapchain %p", new_swapchain, old_swapchain );
 
 	return new_swapchain;
 }
@@ -394,8 +394,7 @@ static void swapchain_khr_release( le_swapchain_o* base ) {
 	//
 	// `release` is implicitly called by `destroy`
 
-	static auto logger = LeLog( LOGGER_LABEL );
-	auto        self   = static_cast<khr_data_o* const>( base->data );
+	auto self = static_cast<khr_data_o* const>( base->data );
 
 	VkDevice device = self->device;
 
@@ -405,7 +404,7 @@ static void swapchain_khr_release( le_swapchain_o* base ) {
 	if ( self->swapchainKHR ) {
 
 		vkDestroySwapchainKHR( device, self->swapchainKHR, nullptr );
-		logger.info( "Destroyed VkSwapchain: %p", base, self->swapchainKHR );
+		logger().info( "Destroyed VkSwapchain: %p", base, self->swapchainKHR );
 		self->swapchainKHR = nullptr;
 	}
 
@@ -415,7 +414,7 @@ static void swapchain_khr_release( le_swapchain_o* base ) {
 		//
 		// We only want to destroy a surface if it belonged to a non-retired swapchain.
 		vkDestroySurfaceKHR( self->instance, self->vk_surface, nullptr );
-		logger.info( "Destroyed VkSurface: %p", self->vk_surface );
+		logger().info( "Destroyed VkSurface: %p", self->vk_surface );
 
 		le_window_api_i->window_i.notify_destroy_surface( self->mSettings.window );
 
@@ -432,8 +431,7 @@ static void swapchain_khr_release( le_swapchain_o* base ) {
 
 static void swapchain_khr_destroy( le_swapchain_o* base ) {
 
-	static auto logger = LeLog( LOGGER_LABEL );
-	auto        self   = static_cast<khr_data_o* const>( base->data );
+	auto self = static_cast<khr_data_o* const>( base->data );
 
 	swapchain_khr_release( base );
 
@@ -442,7 +440,7 @@ static void swapchain_khr_destroy( le_swapchain_o* base ) {
 	}
 	self->vk_present_fences.clear();
 
-	logger.info( "Destroyed Swapchain %p", self );
+	logger().info( "Destroyed Swapchain %p", self );
 
 	delete self; // delete object's data
 	delete base; // delete object
@@ -456,15 +454,14 @@ static bool swapchain_khr_acquire_next_image( le_swapchain_o* base, VkSemaphore 
 	// This method will return the next avaliable vk image index for this swapchain, possibly
 	// before this image is available for writing. Image will be ready for writing when
 	// semaphorePresentComplete is signalled.
-	static auto logger = LeLog( LOGGER_LABEL );
 
 	if ( self->is_retired ) {
 		assert( false );
 	}
 
 	if ( self->lastError != VK_SUCCESS &&
-		 self->lastError != VK_SUBOPTIMAL_KHR ) {
-		logger.warn( "KHR Swapchain %p cannot acquire image because of previous error: %s", base, to_str( self->lastError ) );
+	     self->lastError != VK_SUBOPTIMAL_KHR ) {
+		logger().warn( "KHR Swapchain %p cannot acquire image because of previous error: %s", base, to_str( self->lastError ) );
 		return false;
 	}
 
@@ -474,18 +471,18 @@ static bool swapchain_khr_acquire_next_image( le_swapchain_o* base, VkSemaphore 
 	case VK_SUCCESS: {
 		self->mImageIndex = *image_index;
 
-		// logger.info( "Acquired image %d via swapchain %p, img: %p", *image_index, base, self->mImageRefs[ *image_index ] );
+		// logger().info( "Acquired image %d via swapchain %p, img: %p", *image_index, base, self->mImageRefs[ *image_index ] );
 		return true;
 	}
 	case VK_SUBOPTIMAL_KHR:         // | fall-through
 	case VK_ERROR_SURFACE_LOST_KHR: // |
 	case VK_ERROR_OUT_OF_DATE_KHR:  // |
 	{
-		logger.warn( "Could not acquire next image: %s", to_str( self->lastError ) );
+		logger().warn( "Could not acquire next image: %s", to_str( self->lastError ) );
 		return false;
 	}
 	default:
-		logger.error( "Could not acquire next image: %s", to_str( self->lastError ) );
+		logger().error( "Could not acquire next image: %s", to_str( self->lastError ) );
 		return false;
 	}
 }
@@ -550,11 +547,10 @@ static size_t swapchain_khr_get_swapchain_images_count( le_swapchain_o* base ) {
 
 static bool swapchain_khr_present( le_swapchain_o* base, VkQueue queue_, VkSemaphore renderCompleteSemaphore, uint32_t* pImageIndex ) {
 
-	static auto logger = LeLog( LOGGER_LABEL );
-	auto        self   = static_cast<khr_data_o* const>( base->data );
+	auto self = static_cast<khr_data_o* const>( base->data );
 
 	if ( self->is_retired ) {
-		logger.warn( "Present called on retired swapchain" );
+		logger().warn( "Present called on retired swapchain" );
 		// return false;
 		// assert( false );
 	}
@@ -562,24 +558,24 @@ static bool swapchain_khr_present( le_swapchain_o* base, VkQueue queue_, VkSemap
 	uint32_t image_index = *pImageIndex;
 
 	VkSwapchainPresentFenceInfoEXT present_fence_info = {
-		.sType          = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT, // VkStructureType
-		.pNext          = nullptr,                                            // void *, optional
-		.swapchainCount = 1,                                                  // uint32_t
-		.pFences        = &self->vk_present_fences[ *pImageIndex ],           // VkFence const *
+	    .sType          = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT, // VkStructureType
+	    .pNext          = nullptr,                                            // void *, optional
+	    .swapchainCount = 1,                                                  // uint32_t
+	    .pFences        = &self->vk_present_fences[ *pImageIndex ],           // VkFence const *
 	};
 
 	vkWaitForFences( self->device, 1, present_fence_info.pFences, true, 1'000'000'000 );
 	vkResetFences( self->device, 1, present_fence_info.pFences );
 
 	VkPresentInfoKHR presentInfo{
-		.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-		.pNext              = &present_fence_info, // optional
-		.waitSemaphoreCount = 1,                   // optional
-		.pWaitSemaphores    = &renderCompleteSemaphore,
-		.swapchainCount     = 1,
-		.pSwapchains        = &self->swapchainKHR,
-		.pImageIndices      = pImageIndex,
-		.pResults           = nullptr, // optional
+	    .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+	    .pNext              = &present_fence_info, // optional
+	    .waitSemaphoreCount = 1,                   // optional
+	    .pWaitSemaphores    = &renderCompleteSemaphore,
+	    .swapchainCount     = 1,
+	    .pSwapchains        = &self->swapchainKHR,
+	    .pImageIndices      = pImageIndex,
+	    .pResults           = nullptr, // optional
 	};
 
 	self->lastError = vkQueuePresentKHR( queue_, &presentInfo );
@@ -599,7 +595,7 @@ static bool swapchain_khr_present( le_swapchain_o* base, VkQueue queue_, VkSemap
 		 *
 		 */
 
-		logger.warn( "Present returned error: %s", to_str( self->lastError ) );
+		logger().warn( "Present returned error: %s", to_str( self->lastError ) );
 		return false;
 	}
 
@@ -612,15 +608,15 @@ static bool swapchain_request_backend_capabilities( const le_swapchain_settings_
 	using namespace le_backend_vk;
 
 	static VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchain_maintenance_features = {
-		.sType                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT, // VkStructureType
-		.pNext                 = nullptr,                                                                // void *, optional
-		.swapchainMaintenance1 = 1,                                                                      // VkBool32
+	    .sType                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT, // VkStructureType
+	    .pNext                 = nullptr,                                                                // void *, optional
+	    .swapchainMaintenance1 = 1,                                                                      // VkBool32
 	};
 
 	auto p_maintenance_features =
-		( VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT* )
-			api->le_backend_settings_i.get_or_append_features_chain_link(
-				( GenericVkStruct* )( &swapchain_maintenance_features ) );
+	    ( VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT* )
+	        api->le_backend_settings_i.get_or_append_features_chain_link(
+	            ( GenericVkStruct* )( &swapchain_maintenance_features ) );
 
 	p_maintenance_features->swapchainMaintenance1 = true;
 

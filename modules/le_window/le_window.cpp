@@ -28,6 +28,14 @@
 constexpr size_t EVENT_QUEUE_SIZE                 = ( 4096 * 4 ) / sizeof( LeUiEvent ); // Allocate a few pages for events
 constexpr auto   GAMEPAD_SUBSCRIBERS_SINGLETON_ID = hash_64_fnv1a_const( "le_window_gamepad_subscribers" );
 
+constexpr auto LOGGER_LABEL = "le_window";
+
+static le::Log& logger() {
+	// Enforce lazy initialization for logger().oblect
+	static auto logger = le::Log( LOGGER_LABEL );
+	return logger;
+};
+
 struct le_window_settings_o {
 	int          width           = 640;
 	int          height          = 480;
@@ -74,8 +82,6 @@ struct gamepad_events_subscriber_windows_t {
 
 static gamepad_events_subscriber_windows_t* gamepad_events_subscribers_singleton_get() {
 
-	static auto logger = le::Log( "le_window" );
-
 	static std::mutex mtx;
 
 	// we need a mutex here to prevent a race condition where two or more threads
@@ -91,7 +97,7 @@ static gamepad_events_subscriber_windows_t* gamepad_events_subscribers_singleton
 	// If the entry is empty, allocate a new object and update the dictionary entry.
 	if ( *dict == nullptr ) {
 		*dict = new gamepad_events_subscriber_windows_t{};
-		logger.info( "Created gamepad events subscribers singleton" );
+		logger().debug( "Created gamepad events subscribers singleton" );
 	}
 
 	return static_cast<gamepad_events_subscriber_windows_t*>( *dict );
@@ -131,8 +137,6 @@ static void le_window_gamepad_callback( le_window_o* window, le::UiEvent::Gamepa
 			event.event = le::UiEvent::Type::eGamepad;
 			auto& e     = event.gamepad;
 			e           = ev;
-
-			static auto logger = le::Log( "le_window" );
 
 		} else {
 			// we're over the high - watermark for events, we should probably print a warning.
@@ -276,8 +280,7 @@ static void glfw_window_scroll_callback( GLFWwindow* glfwWindow, double xoffset,
 // ----------------------------------------------------------------------
 static void glfw_window_drop_callback( GLFWwindow* glfwWindow, int count_paths, char const** utf8_paths ) {
 
-	auto        window = static_cast<le_window_o*>( glfwGetWindowUserPointer( glfwWindow ) );
-	static auto logger = LeLog( "le_window" );
+	auto window = static_cast<le_window_o*>( glfwGetWindowUserPointer( glfwWindow ) );
 
 	if ( window->mSettings.useEventsQueue ) {
 
@@ -309,7 +312,7 @@ static void glfw_window_drop_callback( GLFWwindow* glfwWindow, int count_paths, 
 
 				std::string str = utf8_paths[ i ];
 
-				logger.debug( "dropped path [%d]: '%s'", i, str.c_str() );
+				logger().debug( "dropped path [%d]: '%s'", i, str.c_str() );
 
 				window->eventStringData[ queueIdx ].push_front( str );
 				str_ptrs.push_back( window->eventStringData[ queueIdx ].front().c_str() );
@@ -319,7 +322,7 @@ static void glfw_window_drop_callback( GLFWwindow* glfwWindow, int count_paths, 
 			drop.paths_utf8 = window->eventStringPtr[ queueIdx ].front().data();
 
 		} else {
-			logger.warn( "surpassed high watermark" );
+			logger().warn( "surpassed high watermark" );
 			// we're over the high - watermark for events, we should probably print a warning.
 		}
 	}
@@ -328,8 +331,7 @@ static void glfw_window_drop_callback( GLFWwindow* glfwWindow, int count_paths, 
 
 static void glfw_framebuffer_resize_callback( GLFWwindow* glfwWindow, int width_px, int height_px ) {
 
-	auto        window = static_cast<le_window_o*>( glfwGetWindowUserPointer( glfwWindow ) );
-	static auto logger = LeLog( "le_window" );
+	auto window = static_cast<le_window_o*>( glfwGetWindowUserPointer( glfwWindow ) );
 
 	int w = width_px;
 	int h = height_px;
@@ -353,7 +355,7 @@ static void glfw_framebuffer_resize_callback( GLFWwindow* glfwWindow, int width_
 			resize.height = h;
 
 		} else {
-			logger.warn( "surpassed high watermark" );
+			logger().warn( "surpassed high watermark" );
 			// we're over the high - watermark for events, we should probably print a warning.
 		}
 	}
@@ -385,9 +387,9 @@ static void window_decrease_reference_count( le_window_o* self ) {
 
 static bool pt2_inside_rect( int x, int y, int left, int top, int width, int height ) {
 	return ( x > left &&
-			 x < ( left + width ) &&
-			 y > top &&
-			 y < ( top + height ) );
+	         x < ( left + width ) &&
+	         y > top &&
+	         y < ( top + height ) );
 }
 
 // ----------------------------------------------------------------------
@@ -525,12 +527,11 @@ static void window_settings_destroy( le_window_settings_o* self_ ) {
 // the caller which must outlive this le_window_o, and take responsibility
 // of deleting the surface via window_destroy_surface.
 static VkSurfaceKHR_T* window_create_surface( le_window_o* self, VkInstance vkInstance ) {
-	static auto logger = LeLog( "le_window" );
 
 	uint32_t prev_num_surfaces = self->surface_counter++;
 
 	if ( prev_num_surfaces != 0 ) {
-		logger.debug( "Error creating surface: surface already existed for window %p", self );
+		logger().debug( "Error creating surface: surface already existed for window %p", self );
 		self->surface_counter--;
 		return nullptr;
 	}
@@ -542,9 +543,9 @@ static VkSurfaceKHR_T* window_create_surface( le_window_o* self, VkInstance vkIn
 		glfwGetFramebufferSize( self->window, &tmp_w, &tmp_h );
 		self->mSurfaceExtent.height = uint32_t( tmp_h );
 		self->mSurfaceExtent.width  = uint32_t( tmp_w );
-		logger.debug( "Created surface" );
+		logger().debug( "Created surface" );
 	} else {
-		logger.error( "Error creating surface" );
+		logger().error( "Error creating surface" );
 		return nullptr;
 	}
 
@@ -608,12 +609,11 @@ static void window_remove_callbacks( le_window_o* self ) {
 //
 // You must only call this method once per Frame.
 static void window_get_ui_event_queue( le_window_o* self, LeUiEvent const** events, uint32_t* numEvents ) {
-	static auto logger = LeLog( "le_window" );
 
 	if ( false == self->mSettings.useEventsQueue ) {
 		*events   = nullptr;
 		numEvents = 0;
-		logger.warn( "Querying ui event queue when event queue not in use. Use window.settings to enable events queue." );
+		logger().warn( "Querying ui event queue when event queue not in use. Use window.settings to enable events queue." );
 		return;
 	}
 
@@ -807,21 +807,19 @@ static void* window_get_os_native_window_handle( le_window_o* self ) {
 // GLFW
 static void glfw_joystick_connection_callback( int jid, int event ) {
 
-	static auto logger = le::Log( "glfw" );
-
 	if ( event == GLFW_CONNECTED ) {
-		logger.info( "Joystick connected: %d, Name: '%s', GUID: '%s'", jid, glfwGetJoystickName( jid ), glfwGetJoystickGUID( jid ) );
+		logger().info( "Joystick connected: %d, Name: '%s', GUID: '%s'", jid, glfwGetJoystickName( jid ), glfwGetJoystickGUID( jid ) );
 
 		// test whether the joystick has a gamepad mapping
 
 		if ( glfwJoystickIsGamepad( jid ) ) {
-			logger.info( "Joystick has gamepad mapping." );
+			logger().info( "Joystick has gamepad mapping." );
 		} else {
-			logger.warn( "Joystick does not have gamepad mapping." );
+			logger().warn( "Joystick does not have gamepad mapping." );
 		}
 
 	} else if ( event == GLFW_DISCONNECTED ) {
-		logger.info( "Joystick disconnected: %d", jid );
+		logger().info( "Joystick disconnected: %d", jid );
 	}
 }
 
@@ -832,10 +830,8 @@ static int init() {
 	int result = glfwInit();
 	assert( result == GLFW_TRUE );
 
-	static auto logger = LeLog( "le_window" );
-
 	if ( glfwVulkanSupported() ) {
-		logger.debug( "Vulkan supported." );
+		logger().debug( "Vulkan supported." );
 		uint32_t     ext_count = 0;
 		const char** exts      = glfwGetRequiredInstanceExtensions( &ext_count );
 		for ( uint32_t i = 0; i < ext_count; i++ ) {
@@ -843,7 +839,7 @@ static int init() {
 		}
 
 	} else {
-		logger.error( "Vulkan not supported." );
+		logger().error( "Vulkan not supported." );
 	}
 
 	// initialise gamepad subscriber singleton - we call this method here
@@ -875,8 +871,6 @@ static int init() {
 // to all windows that their event queue is stale at this moment.
 static void pollEvents() {
 	glfwPollEvents();
-
-	static auto logger = le::Log( "le_window" );
 
 	static le::UiEvent::GamepadEvent gamepad_data[ 15 ];
 	uint32_t                         has_gamepad_data = {};
@@ -940,7 +934,6 @@ static void pollEvents() {
 // ----------------------------------------------------------------------
 
 static void le_terminate() {
-	static auto logger = LeLog( "le_window" );
 	glfwTerminate();
 	{
 		// destroy list of subscribers
@@ -950,9 +943,9 @@ static void le_terminate() {
 		// if that pointer is not set, delete has no effect, as we can delete a nullptr guilt-free.
 		delete ( static_cast<gamepad_events_subscriber_windows_t*>( *dict ) );
 		*dict = nullptr;
-		logger.debug( "Destroyed GamePad events subscribers singleton" );
+		logger().debug( "Destroyed GamePad events subscribers singleton" );
 	}
-	logger.debug( "Glfw was terminated." );
+	logger().debug( "Glfw was terminated." );
 }
 
 // ----------------------------------------------------------------------

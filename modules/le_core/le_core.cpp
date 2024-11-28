@@ -159,19 +159,12 @@ struct loader_callback_params_o {
 };
 
 static le_module_loader_api const* get_module_loader_api() {
-	static auto api = ( le_module_loader_api const* )
-	    le_core_load_module_static(
-	        le_module_name_le_module_loader,
-	        le_module_register_le_module_loader,
-	        sizeof( le_module_loader_api ) );
+	static auto api = LE_MODULE_GET_API_STATIC( le_module_loader );
 	return api;
 }
 
 static le_file_watcher_api const* get_le_file_watcher_api() {
-	static auto api = ( le_file_watcher_api const* )
-	    le_core_load_module_dynamic(
-	        le_module_name_le_file_watcher,
-	        sizeof( le_file_watcher_api ), false );
+	static auto api = LE_MODULE_GET_API_DYNAMIC( le_file_watcher );
 	return api;
 }
 
@@ -214,6 +207,18 @@ struct DeferDelete {
 
 	~DeferDelete() {
 		static auto module_loader_i = get_module_loader_api()->le_module_loader_i;
+
+		// call teardown on each module
+		//
+		// we do this in a separate pass from destroy
+		// so that we can enforce that all modules are alive
+		//
+		for ( auto& l : loaders ) {
+			if ( l ) {
+				module_loader_i.unregister_api( l );
+			}
+		}
+
 		for ( auto& l : loaders ) {
 			if ( l ) {
 				module_loader_i.destroy( l );
@@ -232,10 +237,10 @@ static DeferDelete& defer_delete() {
 
 // ----------------------------------------------------------------------
 /// \returns index into apiStore entry for api with given id
-/// \param id        Hashed api name string
-/// \param debugName Api name string for debug purposes
+/// \param id           Hashed module_name string
+/// \param module_name  Module name
 /// \note  In case a given id is not found in apiStore, a new entry is appended to apiStore
-static size_t produce_api_index( uint64_t id, const char* debugName ) {
+static size_t produce_api_index( uint64_t id, const char* module_name ) {
 
 	size_t foundElement = 0;
 
@@ -250,7 +255,7 @@ static size_t produce_api_index( uint64_t id, const char* debugName ) {
 		// no element found, we need to add an element
 		apiStore().nameHashes.emplace_back( id );
 		apiStore().ptrs.emplace_back( nullptr );    // initialise to nullptr
-		apiStore().names.emplace_back( debugName ); // implicitly creates a string
+		apiStore().names.emplace_back( module_name ); // implicitly creates a string
 	}
 
 	// --------| invariant: foundElement points to correct element
@@ -260,17 +265,17 @@ static size_t produce_api_index( uint64_t id, const char* debugName ) {
 
 // ----------------------------------------------------------------------
 
-static void* le_core_get_api( uint64_t id, const char* debugName ) {
+static void* le_core_get_api( uint64_t id, const char* module_name ) {
 
-	size_t foundElement = produce_api_index( id, debugName );
+	size_t foundElement = produce_api_index( id, module_name );
 	return apiStore().ptrs[ foundElement ];
 }
 
 // ----------------------------------------------------------------------
 
-static void* le_core_create_api( uint64_t id, size_t apiStructSize, const char* debugName ) {
+static void* le_core_create_api( uint64_t id, size_t apiStructSize, const char* module_name ) {
 
-	size_t foundElement = produce_api_index( id, debugName );
+	size_t foundElement = produce_api_index( id, module_name );
 
 	auto& apiPtr = apiStore().ptrs[ foundElement ];
 
@@ -292,9 +297,52 @@ static void* le_core_create_api( uint64_t id, size_t apiStructSize, const char* 
 
 // ----------------------------------------------------------------------
 
-ISL_API_ATTR void* le_core_load_module_static( char const* module_name, void ( *module_reg_fun )( void* ), uint64_t api_size_in_bytes ) {
-	void* api = le_core_create_api( hash_64_fnv1a_const( module_name ), api_size_in_bytes, module_name );
-	module_reg_fun( api );
+ISL_API_ATTR void* le_core_load_module_static( char const* module_name, void ( *module_reg_fun )( void* ), void ( *module_unreg_fun )( void* ), uint64_t api_size_in_bytes ) {
+	uint64_t id  = hash_64_fnv1a_const( module_name );
+
+	uint64_t module_name_hash = hash_64_fnv1a_const( module_name );
+
+	// first try to retrieve api from cache of available apis
+	void* api = le_core_get_api( module_name_hash, module_name );
+
+	// if api does not yet exist, create it
+	if ( api == nullptr ) {
+
+		// ---------| invariant: this api has not yet been registered
+
+		api = le_core_create_api( id, api_size_in_bytes, module_name );
+
+		// Call module register function inside the module. This will initialize
+		// the API inside the module.
+		module_reg_fun( api );
+
+		struct DeferredUnregister {
+			struct Obj {
+				uint64_t    id                    = 0;
+				std::string debug_module_name     = "";
+				void ( *unregister_fun )( void* ) = nullptr;
+				void* api                         = nullptr;
+			};
+			std::vector<Obj> objs;
+			~DeferredUnregister() {
+				// Call unregister on all objects -
+				// Last registered will be unregistered first.
+				for ( auto it = objs.rbegin(); it != objs.rend(); it++ ) {
+					if ( it->unregister_fun ) {
+						// 	std::cout << "Unregistering: " << it->debug_module_name << std::endl;
+						it->unregister_fun( it->api );
+					}
+				}
+			}
+		};
+
+		// Keep track of registered objects so that we can
+		// unregister them later.
+		static DeferredUnregister unreg;
+
+		unreg.objs.emplace_back( id, module_name, module_unreg_fun, api );
+	}
+
 	return api;
 };
 
@@ -306,14 +354,14 @@ ISL_API_ATTR void* le_core_load_module_dynamic( char const* module_name, uint64_
 
 	void* api = le_core_get_api( module_name_hash, module_name );
 
-	if ( module_name_hash == hash_64_fnv1a_const( "le_file_watcher" ) ) {
-		// To answer that age-old question: No-one watches the watcher.
-		should_watch = false;
-	}
-
-	static auto module_loader_i = get_module_loader_api()->le_module_loader_i;
-
 	if ( api == nullptr ) {
+
+		if ( module_name_hash == hash_64_fnv1a_const( "le_file_watcher" ) ) {
+			// To answer that age-old question: No-one watches the watcher.
+			should_watch = false;
+		}
+
+		static auto module_loader_i = get_module_loader_api()->le_module_loader_i;
 
 		char api_register_fun_name[ 256 ];
 		snprintf( api_register_fun_name, 255, "le_module_register_%s", module_name );
@@ -375,7 +423,7 @@ ISL_API_ATTR void* le_core_load_module_dynamic( char const* module_name, uint64_
 		}
 
 	} else {
-		// TODO: we should warn that this api was already added.
+		// Api was already added.
 	}
 
 	return api;

@@ -28,11 +28,11 @@ struct le_image_decoder_o {
 
 // ----------------------------------------------------------------------
 
-static auto logger = LeLog( "le_pixels" );
 
 // ----------------------------------------------------------------------
 // Todo: rewrite this using codegen and vk.xml which includes a formats table
 static void infer_data_info_from_le_format( le::Format const& format, int32_t* num_channels, le_num_type* num_type ) {
+	static auto logger = LeLog( "le_pixels" );
 	switch ( format ) {
 	case le::Format::eR8G8B8A8Uint: // deliberate fall-through
 	case le::Format::eR8G8B8A8Unorm:
@@ -78,6 +78,7 @@ static void infer_data_info_from_le_format( le::Format const& format, int32_t* n
 // ----------------------------------------------------------------------
 // load image file, and poke at file info; does not load file into memory
 static le_image_decoder_o* le_image_decoder_create_image_decoder( char const* filepath ) {
+	static auto logger = LeLog( "le_pixels" );
 
 	auto self = new le_image_decoder_o{};
 
@@ -139,6 +140,7 @@ static le_image_decoder_o* le_image_decoder_create_image_decoder( char const* fi
 // ----------------------------------------------------------------------
 
 static void le_image_decoder_destroy_image_decoder( le_image_decoder_o* self ) {
+	static auto logger = LeLog( "le_pixels" );
 	delete self;
 	logger.info( "Destroyed pixels image decoder" );
 };
@@ -161,6 +163,7 @@ static void le_image_decoder_get_image_data_description( le_image_decoder_o* sel
 // Read out pixels from file into given array of bytes.
 // Uses pixel format and w,h, to figure out the size of p_pixels
 static bool le_image_decoder_read_pixels( le_image_decoder_o* self, uint8_t* pixels, size_t pixels_byte_count ) {
+	static auto logger = LeLog( "le_pixels" );
 
 	// TODO: read actual pixels
 	auto format = ( self->image_requested_format != le::Format::eUndefined ) ? self->image_requested_format : self->image_inferred_format;

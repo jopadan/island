@@ -44,7 +44,7 @@ static bool le_backend_vk_settings_set_requested_queue_capabilities( VkQueueFlag
 		self->requested_queues_capabilities.assign( queues, queues + num_queues );
 		return true;
 	} else {
-		static auto logger = LeLog( "le_backend_vk_settings" );
+		static auto logger = le::Log( "backend settings" );
 		logger.error( "Cannot set queue capabilities" );
 		return false;
 	}
@@ -55,7 +55,7 @@ static bool le_backend_vk_settings_add_requested_queue_capabilities( VkQueueFlag
 		self->requested_queues_capabilities.insert( self->requested_queues_capabilities.end(), queues, queues + num_queues );
 		return true;
 	} else {
-		static auto logger = LeLog( "le_backend_vk_settings" );
+		static auto logger = le::Log( "backend settings" );
 		logger.error( "Cannot set queue capabilities" );
 		return false;
 	}
@@ -82,7 +82,7 @@ static bool le_backend_vk_settings_add_required_instance_extension( le_backend_v
 		}
 		return true;
 	} else {
-		static auto logger = LeLog( "le_backend_vk_settings" );
+		static auto logger = le::Log( "backend settings" );
 		logger.error( "Cannot add required instance extension '%s'", ext );
 		return false;
 	}
@@ -102,7 +102,7 @@ static bool le_backend_vk_settings_add_required_device_extension( le_backend_vk_
 
 		return true;
 	} else {
-		static auto logger = LeLog( "le_backend_vk_settings" );
+		static auto logger = le::Log( "backend settings" );
 		logger.error( "Cannot add required device extension '%s'", ext );
 		return false;
 	}

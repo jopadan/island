@@ -9,6 +9,12 @@
 
 static constexpr auto LOGGER_LABEL = "le_swapchain_vk";
 
+static le::Log& logger() {
+	// Enforce lazy initialization for logger().oblect
+	static auto logger = le::Log( LOGGER_LABEL );
+	return logger;
+};
+
 // ----------------------------------------------------------------------
 #ifdef PLUGINS_DYNAMIC
 #	define VOLK_IMPLEMENTATION
@@ -35,7 +41,6 @@ static void swapchain_inc_ref( le_swapchain_o* base ); // ffdecl.
 
 static le_swapchain_o* swapchain_create( le_backend_o* backend, const le_swapchain_settings_t* settings ) {
 
-	static auto logger = LeLog( LOGGER_LABEL );
 	post_reload_hook( backend );
 
 #ifdef PLUGINS_DYNAMIC
@@ -57,7 +62,7 @@ static le_swapchain_o* swapchain_create( le_backend_o* backend, const le_swapcha
 		break;
 	case ( le_swapchain_settings_t::Type::LE_SWAPCHAIN_UNDEFINED ):
 	default: // deliberate fall-through
-		logger.error( "Unrecognised swapchain type." );
+		logger().error( "Unrecognised swapchain type." );
 		break;
 	}
 

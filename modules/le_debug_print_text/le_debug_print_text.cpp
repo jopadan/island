@@ -1,4 +1,4 @@
-#include "le_debug_print_text.h"
+#define LE_MODULE_EXPLICIT_UNREGISTER
 #include "le_core.h"
 #include "le_renderer.h"
 #include "le_renderer.hpp"
@@ -10,6 +10,8 @@
 #include "string.h" // for strlen
 #include <cstdarg>  // for arg
 #include <limits>   // for std::numeric_limits
+
+#include "le_debug_print_text.h"
 
 #include "shaders/debug_text_frag.h"
 #include "shaders/debug_text_vert.h"
@@ -74,7 +76,6 @@ struct word_data {
 	float_colour_t col_bg;             // background colour
 };
 
-static auto logger = le::Log( "le_debug_print_text" );
 
 // ----------------------------------------------------------------------
 
@@ -100,9 +101,10 @@ static void le_debug_print_text_draw_reset( this_o* self ) {
 // ----------------------------------------------------------------------
 
 static this_o* le_debug_print_text_create() {
-	auto self = new this_o();
+	static auto logger = le::Log( "le_debug_print_text" );
 
-	logger.info( "Created debug text printer object %p", self );
+	auto        self   = new this_o();
+	logger.debug( "Created debug text printer object %p", self );
 	le_debug_print_text_draw_reset( self );
 
 	return self;
@@ -111,6 +113,8 @@ static this_o* le_debug_print_text_create() {
 // ----------------------------------------------------------------------
 
 static void le_debug_print_text_destroy( this_o* self ) {
+	static auto logger = le::Log( "le_debug_print_text" );
+	logger.debug( "Deleted debug text printer object %p", self );
 	delete self;
 }
 
@@ -598,6 +602,19 @@ static void le_debug_print_text_printf( this_o* self, const char* msg, ... ) {
 
 // ----------------------------------------------------------------------
 
+LE_MODULE_UNREGISTER_IMPL( le_debug_print_text, api ) {
+
+	// we must clean up in case we created a singleton debug printer object
+	auto p_le_debug_print_text_api = static_cast<le_debug_print_text_api*>( api );
+
+	if ( p_le_debug_print_text_api->singleton_obj ) {
+		le_debug_print_text_destroy( p_le_debug_print_text_api->singleton_obj );
+		p_le_debug_print_text_api->singleton_obj = nullptr;
+	}
+};
+
+// ----------------------------------------------------------------------
+
 LE_MODULE_REGISTER_IMPL( le_debug_print_text, api ) {
 	auto const& p_le_debug_print_text_api = static_cast<le_debug_print_text_api*>( api );
 	auto&       le_debug_print_text_i     = static_cast<le_debug_print_text_api*>( api )->le_debug_print_text_i;
@@ -620,6 +637,7 @@ LE_MODULE_REGISTER_IMPL( le_debug_print_text, api ) {
 
 	le_debug_print_text_i.push_style = le_debug_print_text_push_style;
 	le_debug_print_text_i.pop_style  = le_debug_print_text_pop_style;
+
 
 	if ( p_le_debug_print_text_api->singleton_obj == nullptr ) {
 		// If we're registering this for the first time, we must create the singleton object.

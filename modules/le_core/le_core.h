@@ -44,7 +44,7 @@
 #endif
 
 ISL_API_ATTR DLL_CORE_API void  le_core_poll_for_module_reloads();
-ISL_API_ATTR DLL_CORE_API void* le_core_load_module_static( char const* module_name, void ( *module_reg_fun )( void* ), uint64_t api_size_in_bytes );
+ISL_API_ATTR DLL_CORE_API void* le_core_load_module_static( char const* module_name, void ( *module_reg_fun )( void* ), void ( *module_unreg_fun )( void* ), uint64_t api_size_in_bytes );
 ISL_API_ATTR DLL_CORE_API void* le_core_load_module_dynamic( char const* module_name, uint64_t api_size_in_bytes, bool should_watch );
 ISL_API_ATTR DLL_CORE_API void* le_core_load_library_persistently( char const* library );
 
@@ -140,31 +140,49 @@ ISL_API_ATTR DLL_CORE_API char const* le_get_argument_name_from_hash( uint64_t v
 
 // ---------- utilities
 
-#define LE_MODULE_REGISTER_IMPL( x, api ) \
-	ISL_API_ATTR void le_module_register_##x( void* api )
+#ifdef LE_MODULE_EXPLICIT_UNREGISTER
+#	define LE_MODULE_REGISTER_IMPL( x, api ) \
+		ISL_API_ATTR void le_module_register_##x( void* api )
+#	define LE_MODULE_UNREGISTER_IMPL( x, api ) \
+		ISL_API_ATTR void le_module_unregister_##x( void* api )
+#else
+#	define LE_MODULE_REGISTER_IMPL( x, api )                      \
+		ISL_API_ATTR void le_module_unregister_##x( void* api ){}; \
+		ISL_API_ATTR void le_module_register_##x( void* api )
+#endif
 
-#define LE_MODULE( x )                                                   \
-	ISL_API_ATTR DLL_EXPORT_PREFIX void le_module_register_##x( void* ); \
+#define LE_MODULE( x )                                                     \
+	ISL_API_ATTR DLL_EXPORT_PREFIX void le_module_register_##x( void* );   \
+	ISL_API_ATTR DLL_EXPORT_PREFIX void le_module_unregister_##x( void* ); \
 	static char const*                  le_module_name_##x = #x
 
-#define LE_MODULE_LOAD_DYNAMIC( x )                                                  \
-	static x##_api const* x##_api_i = ( x##_api const* )le_core_load_module_dynamic( \
-	    le_module_name_##x,                                                          \
-	    sizeof( x##_api ),                                                           \
+#define LE_MODULE_GET_API_DYNAMIC( x )             \
+	( x##_api const* )le_core_load_module_dynamic( \
+	    le_module_name_##x,                        \
+	    sizeof( x##_api ),                         \
 	    true )
 
-#define LE_MODULE_LOAD_STATIC( x )                                                  \
-	static x##_api const* x##_api_i = ( x##_api const* )le_core_load_module_static( \
-	    le_module_name_##x,                                                         \
-	    le_module_register_##x,                                                     \
+#define LE_MODULE_GET_API_STATIC( x )             \
+	( x##_api const* )le_core_load_module_static( \
+	    le_module_name_##x,                       \
+	    le_module_register_##x,                   \
+	    le_module_unregister_##x,                 \
 	    sizeof( x##_api ) )
 
 #ifdef PLUGINS_DYNAMIC
 #	define LE_MODULE_LOAD_DEFAULT( x ) \
-		LE_MODULE_LOAD_DYNAMIC( x )
+		static x##_api const* x##_api_i = LE_MODULE_GET_API_DYNAMIC( x )
 #else
 #	define LE_MODULE_LOAD_DEFAULT( x ) \
-		LE_MODULE_LOAD_STATIC( x )
+		static x##_api const* x##_api_i = LE_MODULE_GET_API_STATIC( x )
+#endif
+
+#ifdef PLUGINS_DYNAMIC
+#	define LE_MODULE_GET_API( x ) \
+		LE_MODULE_GET_API_DYNAMIC( x )
+#else
+#	define LE_MODULE_GET_API( x ) \
+		LE_MODULE_GET_API_STATIC( x )
 #endif
 
 // ----------------------------------------------------------------------

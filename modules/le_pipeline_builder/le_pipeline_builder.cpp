@@ -20,6 +20,11 @@
 
 static constexpr auto LOGGER_LABEL = "le_pipeline_builder";
 
+static le::Log& logger() {
+	// Enforce lazy initialization for logger().oblect
+	static auto logger = le::Log( LOGGER_LABEL );
+	return logger;
+};
 /*
 
   where do we store pipeline state objects? the best place is probably the backend.
@@ -119,24 +124,21 @@ static void le_shader_module_builder_set_spirv_code( le_shader_module_builder_o*
 		self->spirv_code        = spirv_code;
 		self->spirv_code_length = spirv_code_length;
 	} else {
-		static auto logger = LeLog( LOGGER_LABEL );
-		logger.error( "Cannot set shader module to compile from source as it was set to use spir-v previously." );
+		logger().error( "Cannot set shader module to compile from source as it was set to use spir-v previously." );
 	}
 }
 static void le_shader_module_builder_set_source_file_path( le_shader_module_builder_o* self, char const* source_file_path ) {
 	if ( set_type( self, le_shader_module_builder_o::eFromSource ) ) {
 		self->source_file_path = source_file_path;
 	} else {
-		static auto logger = LeLog( LOGGER_LABEL );
-		logger.error( "Cannot set shader module to compile from source as it was set to use spir-v previously." );
+		logger().error( "Cannot set shader module to compile from source as it was set to use spir-v previously." );
 	}
 }
 static void le_shader_module_builder_set_source_defines_string( le_shader_module_builder_o* self, char const* source_defines_string ) {
 	if ( set_type( self, le_shader_module_builder_o::eFromSource ) ) {
 		self->source_defines_string = source_defines_string;
 	} else {
-		static auto logger = LeLog( LOGGER_LABEL );
-		logger.error( "Cannot set source defines for a shader module that is not compiled from source. \n(Consider using specialization constants if you want precompiled shader code, yet still to be able to set shader constants at runtime.)" );
+		logger().error( "Cannot set source defines for a shader module that is not compiled from source. \n(Consider using specialization constants if you want precompiled shader code, yet still to be able to set shader constants at runtime.)" );
 	}
 }
 static void le_shader_module_builder_set_shader_stage( le_shader_module_builder_o* self, le::ShaderStage const& shader_stage ) {
@@ -157,7 +159,6 @@ static void le_shader_module_builder_set_specialization_constant( le_shader_modu
 
 static le_shader_module_handle le_shader_module_builder_build( le_shader_module_builder_o* self ) {
 	using namespace le_backend_vk;
-	static auto logger = LeLog( LOGGER_LABEL );
 
 	// We must flatten specialization constant data and entries, if any.
 
@@ -202,7 +203,7 @@ static le_shader_module_handle le_shader_module_builder_build( le_shader_module_
 		    sp_data.data(),
 		    sp_data.size() );
 	default:
-		logger.error( "Could not generate shader module - shader module type not set." );
+		logger().error( "Could not generate shader module - shader module type not set." );
 		return nullptr;
 	}
 }
@@ -586,8 +587,6 @@ static le_gpso_handle le_graphics_pipeline_builder_build( le_graphics_pipeline_b
 // overwrite old entry, otherwise add new shader module.
 static void le_graphics_pipeline_builder_add_shader_stage( le_graphics_pipeline_builder_o* self, le_shader_module_handle shaderModule ) {
 
-	static auto logger = LeLog( LOGGER_LABEL );
-
 	using namespace le_backend_vk;
 
 	auto givenShaderStage = le_shader_module_i.get_stage( self->pipelineCache, shaderModule );
@@ -598,7 +597,7 @@ static void le_graphics_pipeline_builder_add_shader_stage( le_graphics_pipeline_
 			// This pipeline builder has already had a shader for the given stage.
 			// we must warn about this.
 			self->obj->shaderModules[ i ] = shaderModule;
-			logger.warn( "Overwriting shader stage for shader module %x", shaderModule );
+			logger().warn( "Overwriting shader stage for shader module %x", shaderModule );
 			break;
 		}
 	}
