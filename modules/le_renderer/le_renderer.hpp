@@ -258,6 +258,26 @@ class RenderPass {
 		le_renderer::renderpass_i.set_execute_callback( self, user_data, fun_exec );
 	}
 
+	operator auto() {
+		return self;
+	}
+
+	operator const auto() const {
+		return self;
+	}
+
+	static RenderPass clone( le_renderpass_o const* original ) {
+		RenderPass rp( le_renderer::renderpass_i.clone( original ) );
+		// we must decrease ref count as creating a Renderpass
+		// facade on the clone has increased its ref count to 2
+		le_renderer::renderpass_i.ref_dec( rp );
+		return rp;
+	}
+
+	RenderPass clone() {
+		return RenderPass::clone( self );
+	}
+
 	// Create facade from pointer
 	explicit RenderPass( le_renderpass_o* self_ )
 	    : self( self_ ) {
@@ -299,13 +319,6 @@ class RenderPass {
 		return *this;
 	}
 
-	operator auto() {
-		return self;
-	}
-
-	operator const auto() const {
-		return self;
-	}
 
 	RenderPass& setSetupCallback( void* user_data, le_renderer_api::pfn_renderpass_setup_t fun ) {
 		le_renderer::renderpass_i.set_setup_callback( self, user_data, fun );
