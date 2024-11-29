@@ -29,6 +29,7 @@ struct le_module_loader_o {
 	std::string        mApiName;
 	std::string        mRegisterApiFuncName;
 	std::string        mPath;
+	void*              api;
 	void*              mLibraryHandle = nullptr;
 	le_file_watcher_o* mFileWatcher   = nullptr;
 };
@@ -62,8 +63,8 @@ static void log_printf( FILE* f_out, const char* msg, ... ) {
 
 template <typename... Args>
 static void log_debug( const char* msg, Args&&... args ) {
-	if ( logger && le_log::le_log_channel_i.info ) {
-		le_log::le_log_channel_i.debug( logger, msg, std::move( args )... );
+	if ( logger && le_log::api->le_log_channel_i.info ) {
+		le_log::api->le_log_channel_i.debug( logger, msg, std::move( args )... );
 	} else {
 		log_printf( stdout, msg, args... );
 	}
@@ -71,8 +72,8 @@ static void log_debug( const char* msg, Args&&... args ) {
 
 template <typename... Args>
 static void log_info( const char* msg, Args&&... args ) {
-	if ( logger && le_log::le_log_channel_i.info ) {
-		le_log::le_log_channel_i.info( logger, msg, std::move( args )... );
+	if ( logger && le_log::api->le_log_channel_i.info ) {
+		le_log::api->le_log_channel_i.info( logger, msg, std::move( args )... );
 	} else {
 		log_printf( stdout, msg, args... );
 	}
@@ -81,8 +82,8 @@ static void log_info( const char* msg, Args&&... args ) {
 // ----------------------------------------------------------------------
 template <typename... Args>
 static void log_error( const char* msg, Args&&... args ) {
-	if ( logger && le_log::le_log_channel_i.error ) {
-		le_log::le_log_channel_i.error( logger, msg, std::move( args )... );
+	if ( logger && le_log::api->le_log_channel_i.error ) {
+		le_log::api->le_log_channel_i.error( logger, msg, std::move( args )... );
 	} else {
 		log_printf( stderr, msg, args... );
 	}
@@ -161,6 +162,8 @@ static bool register_api( le_module_loader_o* obj, void* api_interface, const ch
 	// define function pointer we will use to initialise api
 	register_api_fun_p_t fptr;
 	// load function pointer to initialisation method
+	obj->api                  = api_interface;
+	obj->mRegisterApiFuncName = register_api_fun_name;
 
 	FARPROC fp;
 
@@ -181,6 +184,43 @@ static bool register_api( le_module_loader_o* obj, void* api_interface, const ch
 }
 
 // ----------------------------------------------------------------------
+// Try to find a function called "_unregister_"
+// and call it with the api object for the current
+// module so that we may give the module an opportunity
+// to clean up before leaving.
+static void unregister_api( le_module_loader_o* obj ) {
+
+	typedef void ( *destroy_api_fun_p_t )( void* );
+	std::string  destroy_api_func_name = obj->mRegisterApiFuncName;
+
+	// turns _register_ into _unregister_
+	auto it = destroy_api_func_name.find( "_register_" );
+	if ( it != std::string::npos ) {
+		destroy_api_func_name.insert( it + 1, "un" );
+	} else {
+		// if we can't find '_register_' in the function name for the registration function
+		// we must squeal.
+		assert( false && "Register api function must contain '_register_' in its name." );
+	}
+
+	FARPROC fp;
+
+	fp = GetProcAddress( ( HINSTANCE )obj->mLibraryHandle, destroy_api_func_name.c_str() );
+	if ( !fp ) {
+		log_error( "ERROR: '%d'", GetLastError() );
+		assert( false );
+		return;
+	}
+
+	auto fptr = ( register_api_fun_p_t )fp;
+
+	if ( fptr ) {
+		// there is a destroy unload function available in this module, call it before teardown
+		fptr( obj->api );
+	}
+};
+
+// ----------------------------------------------------------------------
 
 LE_MODULE_REGISTER_IMPL( le_module_loader, p_api ) {
 	auto  api                          = static_cast<le_module_loader_api*>( p_api );
@@ -189,6 +229,7 @@ LE_MODULE_REGISTER_IMPL( le_module_loader, p_api ) {
 	loader_i.destroy                   = instance_destroy;
 	loader_i.load                      = load;
 	loader_i.register_api              = register_api;
+	loader_i.unregister_api            = unregister_api;
 	loader_i.load_library_persistently = load_library_persistent;
 }
 
