@@ -140,7 +140,7 @@ ISL_API_ATTR DLL_CORE_API char const* le_get_argument_name_from_hash( uint64_t v
 
 // ---------- utilities
 
-#ifdef LE_MODULE_EXPLICIT_UNREGISTER
+#ifdef LE_MODULE_UNREGISTER_EXPLICIT
 #	define LE_MODULE_REGISTER_IMPL( x, api ) \
 		ISL_API_ATTR void le_module_register_##x( void* api )
 #	define LE_MODULE_UNREGISTER_IMPL( x, api ) \

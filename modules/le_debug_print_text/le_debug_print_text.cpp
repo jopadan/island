@@ -1,4 +1,4 @@
-#define LE_MODULE_EXPLICIT_UNREGISTER
+#define LE_MODULE_UNREGISTER_EXPLICIT
 #include "le_core.h"
 #include "le_renderer.h"
 #include "le_renderer.hpp"
