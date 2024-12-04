@@ -117,7 +117,6 @@ static void swapchain_img_reset( le_swapchain_o* base, le_swapchain_img_settings
 
 	for ( auto& frame : self->transferFrames ) {
 
-		uint64_t image_size_in_bytes = 0;
 		{
 			// Allocate space for an image which can hold a render surface
 
@@ -126,7 +125,7 @@ static void swapchain_img_reset( le_swapchain_o* base, le_swapchain_img_settings
 			    .pNext                 = nullptr, // optional
 			    .flags                 = 0,       // optional
 			    .imageType             = VK_IMAGE_TYPE_2D,
-				.format                = self->surface_format.format,
+			    .format                = self->surface_format.format,
 			    .extent                = self->mSwapchainExtent,
 			    .mipLevels             = 1,
 			    .arrayLayers           = 1,
@@ -153,9 +152,27 @@ static void swapchain_img_reset( le_swapchain_o* base, le_swapchain_img_settings
 			        &frame.imageAllocation,
 			        &frame.imageAllocationInfo ) );
 			assert( imgAllocationResult == VK_SUCCESS );
-			image_size_in_bytes = frame.imageAllocationInfo.size;
 		}
 
+		uint64_t image_buffer_size_in_bytes = 0;
+		{
+			// Note that imageAllocationInfo.size might not be what you expect if image
+			// has non-linear (that is: optimal) tiling.
+			//
+			// Optimally tiled images may occupy less (or perhaps even more) than an
+			// equivalent RAW image with given extent and pixel type.
+
+			image_buffer_size_in_bytes = frame.imageAllocationInfo.size;
+
+			le_num_type num_type     = {};
+			uint32_t    num_channels = 0;
+			if ( le_format_infer_channels_and_num_type( le::Format( self->surface_format.format ), &num_channels, &num_type ) ) {
+				uint32_t num_bytes_per_channel = 1 << ( std::underlying_type_t<le_num_type>( num_type ) & 0b11 );
+				image_buffer_size_in_bytes     = num_bytes_per_channel * num_channels * self->mSwapchainExtent.width * self->mSwapchainExtent.height * self->mSwapchainExtent.depth;
+			} else {
+				logger.error( "Could not infer channels and num type for given format: %x", self->surface_format.format );
+			}
+		}
 		{
 			// Allocate space for a buffer in which to read back the image data.
 			//
@@ -167,7 +184,7 @@ static void swapchain_img_reset( le_swapchain_o* base, le_swapchain_img_settings
 			    .sType                 = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 			    .pNext                 = nullptr, // optional
 			    .flags                 = 0,       // optional
-			    .size                  = image_size_in_bytes,
+			    .size                  = image_buffer_size_in_bytes,
 			    .usage                 = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			    .sharingMode           = VK_SHARING_MODE_EXCLUSIVE,
 			    .queueFamilyIndexCount = 1, // optional
