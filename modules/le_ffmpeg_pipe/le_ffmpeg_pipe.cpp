@@ -28,17 +28,11 @@ static uint64_t le_image_encoder_get_encoder_version( le_image_encoder_o* encode
 static le_ffmpeg_pipe_encoder_parameters_t get_default_parameters() {
 	using ns = le_ffmpeg_pipe_encoder_parameters_t;
 	return le_ffmpeg_pipe_encoder_parameters_t{
+	    /* MP4 @ 60 fps */ .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -threads 0 -vcodec h264_nvenc -preset llhq -rc:v vbr_minqp -qmin:v 19 -qmax:v 21 -b:v 2500k -maxrate:v 5000k -profile:v high %s",
 	    // /* GIF */ .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -filter_complex \"[0:v] fps=30,split [a][b];[a] palettegen [p];[b][p] paletteuse\" %s",
-	    /* MP4 */ .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -threads 0 -vcodec h264_nvenc -preset llhq -rc:v vbr_minqp -qmin:v 19 -qmax:v 21 -b:v 2500k -maxrate:v 5000k -profile:v high %s",
 	};
 }
 
-// "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -threads 0 -vcodec h264_nvenc -preset llhq -rc:v vbr_minqp -qmin:v 19 -qmax:v 21 -b:v 2500k -maxrate:v 5000k -profile:v high isl%s.mp4",
-// "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -filter_complex \"[0:v] fps=30,split [a][b];[a] palettegen [p];[b][p] paletteuse\" isl%s.gif",
-// "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -threads 0 -vcodec nvenc_hevc -preset llhq -rc:v vbr_minqp -qmin:v 0 -qmax:v 4 -b:v 2500k -maxrate:v 50000k -vf \"minterpolate=mi_mode=blend:mc_mode=aobmc:mi_mode=mci,framerate=30\" isl%s.mov",
-// "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -threads 0 -vcodec h264_nvenc  -preset llhq -rc:v vbr_minqp -qmin:v 0 -qmax:v 10 -b:v 5000k -maxrate:v 50000k -pix_fmt yuv420p -r 60 -profile:v high isl%s.mp4",
-// "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -threads 0 -preset fast -y -pix_fmt yuv420p isl%s.mp4",
-// "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -threads 0 isl%s_%%03d.png",
 
 // ----------------------------------------------------------------------
 
@@ -66,7 +60,7 @@ static void le_image_encoder_apply_parameters( le_image_encoder_o* self, le_ffmp
 static le_image_encoder_o* le_image_encoder_create( char const* file_path, uint32_t width, uint32_t height ) {
 	static auto logger = LeLog( "le_ffmpeg_pipe" );
 	auto        self   = new le_image_encoder_o();
-	logger.warn( "Creating ffmpeg pipe encoder %p", self );
+	logger.info( "Creating ffmpeg pipe encoder %p", self );
 
 	self->output_file_name = file_path;
 	self->image_width      = width;
@@ -81,7 +75,7 @@ static le_image_encoder_o* le_image_encoder_create( char const* file_path, uint3
 
 static void le_image_encoder_destroy( le_image_encoder_o* self ) {
 	static auto logger = LeLog( "le_ffmpeg_pipe" );
-	logger.warn( "Destroying ffmpeg pipe encoder %p", self );
+	logger.info( "Destroying ffmpeg pipe encoder %p", self );
 
 	if ( self->pipe ) {
 		pclose( self->pipe );
