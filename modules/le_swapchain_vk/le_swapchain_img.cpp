@@ -53,6 +53,7 @@ struct img_data_o {
 	std::string                   image_filename_template  = "";      // template for image file name
 	size_t                        frame_number_offset      = 0;       // optional -- added to running frame number - useful to match renderer frame numbers to image names
 	le_image_encoder_interface_t* image_encoder_i          = nullptr; // optional, non-owing: generic encoder api
+	le_image_encoder_o*           image_encoder            = nullptr;
 	void*                         image_encoder_parameters = nullptr; // optional, owning - cloned via `image_encoder_i.clone_image_encoder_parameters_object()`
 	FILE*                         pipe                     = nullptr; // Pipe to ffmpeg. Owned. must be closed if opened
 	std::string                   pipe_cmd;                           // command line
@@ -62,6 +63,7 @@ struct img_data_o {
 // ----------------------------------------------------------------------
 
 static void swapchain_img_reset( le_swapchain_o* base, le_swapchain_img_settings_t const* settings_ ) {
+	static auto logger = LeLog( LOGGER_LABEL );
 
 	auto self = static_cast<img_data_o* const>( base->data );
 
@@ -82,14 +84,25 @@ static void swapchain_img_reset( le_swapchain_o* base, le_swapchain_img_settings
 			self->image_encoder_i->destroy_image_encoder_parameters_object( self->image_encoder_parameters );
 		}
 
+		if ( self->image_encoder_i && self->image_encoder ) {
+			self->image_encoder_i->destroy_image_encoder( self->image_encoder );
+			self->image_encoder = nullptr;
+		}
+
 		// Update the image encoder interface
 		self->image_encoder_i = self->mSettings.image_encoder_i;
 
 		// Clone image encoder parameters using the given interface
-		if ( self->image_encoder_i && self->mSettings.image_encoder_parameters ) {
-			self->image_encoder_parameters =
-			    self->image_encoder_i->clone_image_encoder_parameters_object(
-			        self->mSettings.image_encoder_parameters );
+		if ( self->image_encoder_i ) {
+
+			// filename should not matter just now; this will get updated when writing the file
+			self->image_encoder = self->image_encoder_i->create_image_encoder( self->image_filename_template.c_str(), self->mSwapchainExtent.width, self->mSwapchainExtent.height );
+
+			if ( self->mSettings.image_encoder_parameters ) {
+				self->image_encoder_parameters =
+				    self->image_encoder_i->clone_image_encoder_parameters_object(
+				        self->mSettings.image_encoder_parameters );
+			}
 		}
 	}
 
@@ -479,6 +492,7 @@ static void swapchain_img_destroy( le_swapchain_o* base ) {
 		pclose( self->pipe );
 #endif                        //
 		self->pipe = nullptr; // mark as closed
+	} else {
 	}
 
 	using namespace le_backend_vk;
@@ -549,6 +563,11 @@ static void swapchain_img_destroy( le_swapchain_o* base ) {
 			    self->image_encoder_parameters );
 			self->image_encoder_parameters = nullptr;
 		}
+		// delete image encoder
+		if ( self->image_encoder_i && self->image_encoder ) {
+			self->image_encoder_i->destroy_image_encoder( self->image_encoder );
+			self->image_encoder = nullptr;
+		}
 	}
 
 	delete self; // delete object's data
@@ -579,20 +598,19 @@ static void write_image( img_data_o* self, const TransferFrame& frame, uint32_t 
 		sprintf( filename, self->image_filename_template.c_str(), frame_index + self->frame_number_offset );
 		logger.info( "Start  Encoding Image: %s", filename );
 
-		le_image_encoder_o* encoder = self->image_encoder_i->create_image_encoder( filename, self->mSwapchainExtent.width, self->mSwapchainExtent.height );
+		self->image_encoder_i->update_filename( self->image_encoder, filename );
 
 		if ( self->image_encoder_parameters ) {
-			self->image_encoder_i->set_encode_parameters( encoder, self->image_encoder_parameters );
+			self->image_encoder_i->set_encode_parameters( self->image_encoder, self->image_encoder_parameters );
 		}
 
 		le_image_encoder_format_o format_wrapper{ le::Format( self->surface_format.format ) };
 
 		self->image_encoder_i->write_pixels(
-			encoder, ( uint8_t* )frame.bufferAllocationInfo.pMappedData,
-			frame.bufferAllocationInfo.size,
-			&format_wrapper );
+		    self->image_encoder, ( uint8_t* )frame.bufferAllocationInfo.pMappedData,
+		    frame.bufferAllocationInfo.size,
+		    &format_wrapper );
 
-		self->image_encoder_i->destroy_image_encoder( encoder );
 		logger.info( "Finish Encoding Image: %s", filename );
 
 	} else if ( self->pipe ) {
