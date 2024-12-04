@@ -13,6 +13,7 @@
 #include "le_swapchain_vk.h"
 #include "le_swapchain_img.h"
 #include "le_png.h"
+#include "le_ffmpeg_pipe.h"
 
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
@@ -45,7 +46,7 @@ struct screenshot_example_app_o {
 	glm::quat                current_rotation;
 	uint64_t                 animation_start                   = 0;
 	le_image_resource_handle swapchain_image                   = nullptr;
-	uint32_t                 num_screenshot_examples_to_record = 0;
+	uint32_t                 num_frames_to_record              = 0;
 	le_image_resource_handle map_image;
 	le_texture_handle        map_texture;
 	bool                     hide_help_text = false;
@@ -251,7 +252,7 @@ static void app_process_ui_events( app_o* self ) {
 					wants_toggle ^= true;
 				} else if ( e.key == LeUiEvent::NamedKey::eS ) {
 					// save screenshot
-					self->num_screenshot_examples_to_record = 12;
+					self->num_frames_to_record = 30;
 				} else if ( e.key == LeUiEvent::NamedKey::eG ) {
 					// toggle grid
 					self->hide_grid ^= 1;
@@ -338,7 +339,7 @@ static bool screenshot_example_app_update( screenshot_example_app_o* self ) {
 		// updated.
 		//
 
-		le_swapchain_img_settings_t settings{
+		le_swapchain_img_settings_t png_settings{
 		    .width_hint  = 800, // 0 means to take the width of the renderer's first swapchain
 		    .height_hint = 400, // 0 means to take the height of the renderer's first swapchain
 
@@ -346,7 +347,54 @@ static bool screenshot_example_app_update( screenshot_example_app_o* self ) {
 		    .image_encoder_i         = le_png::api->le_png_image_encoder_i,
 		    .image_filename_template = "./capture/screenshot_%08d.png",
 		};
-		le_screenshot_api_i->le_screenshot_i.record( self->screen_grabber, rg, self->swapchain_image, &self->num_screenshot_examples_to_record, &settings );
+
+		le_ffmpeg_pipe_encoder_parameters_t mp4_params{
+		    /* MP4 @ 60 fps */
+		    .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -threads 0 -vcodec h264_nvenc -preset llhq -rc:v vbr_minqp -qmin:v 19 -qmax:v 21 -b:v 2500k -maxrate:v 5000k -profile:v high %s",
+		};
+
+		le_swapchain_img_settings_t mp4_settings{
+		    .width_hint  = 800, // 0 means to take the width of the renderer's first swapchain
+		    .height_hint = 400, // 0 means to take the height of the renderer's first swapchain
+
+		    .format_hint              = le::Format::eR8G8B8A8Unorm,
+		    .image_encoder_i          = le_ffmpeg_pipe::api->le_ffmpeg_pipe_encoder_i,
+		    .image_encoder_parameters = &mp4_params,
+		    .image_filename_template  = "./capture/output_%04d.mp4",
+		};
+
+		le_ffmpeg_pipe_encoder_parameters_t gif_params{
+		    /* GIF */
+		    .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -filter_complex \"[0:v] fps=30,split [a][b];[a] palettegen [p];[b][p] paletteuse\" %s",
+		};
+		le_swapchain_img_settings_t gif_settings{
+		    .width_hint  = 800, // 0 means to take the width of the renderer's first swapchain
+		    .height_hint = 400, // 0 means to take the height of the renderer's first swapchain
+
+		    .format_hint              = le::Format::eR8G8B8A8Unorm,
+		    .image_encoder_i          = le_ffmpeg_pipe::api->le_ffmpeg_pipe_encoder_i,
+		    .image_encoder_parameters = &gif_params,
+		    .image_filename_template  = "./capture/output_%04d.gif",
+		};
+
+		// Selecting the appropriate settings struct
+		// to tell the screenshot module how to render
+		// output.
+		//
+		// - as png image sequence
+		// - as gif (linux - only for now)
+		// - as mp4 (linux - only for now)
+
+		le_screenshot_api_i->le_screenshot_i.record(
+		    self->screen_grabber,
+		    rg,
+		    self->swapchain_image,
+		    &self->num_frames_to_record,
+		    // &mp4_settings //
+		    // &gif_settings //
+		    &png_settings //
+		    //
+		);
 	}
 
 	if ( !self->hide_help_text ) {
