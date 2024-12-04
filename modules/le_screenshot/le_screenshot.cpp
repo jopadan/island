@@ -189,7 +189,7 @@ static bool le_screenshot_record( le_screenshot_o* self, le_rendergraph_o* rg, l
 
 	if ( self->swapchain == nullptr ) {
 
-		// find out how which swapchains are available
+		// find out which swapchains are available
 		std::vector<le_swapchain_handle> available_swapchains;
 		size_t                           num_swapchains  = 0;
 		uint32_t                         fallback_width  = 640;

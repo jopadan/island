@@ -47,7 +47,7 @@ which point recording stops.
         le_screenshot_api_i->le_screenshot_i.record( self->screenshot, rg, self->swapchain_image, &num_screenshots, &settings );
 
 Note: Do not point to a stack-value for `num_screenshots`, as this will mean
-that recording never end. Make it static, or something heap-allocated.
+that recording never ends. Make it static, or something heap-allocated.
 
 The last parameter, a `le_swapchain_img_settings_t`, allows you to further
 specify how you want screenshots to be saved. You could, for example, specify
