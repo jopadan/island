@@ -29,35 +29,33 @@
 struct le_image_encoder_o;
 
 struct le_image_encoder_format_o;     // struct wrapper around le::Format
-struct le_image_encoder_parameters_o; // parameters struct
+// struct le_image_encoder_parameters_o; // parameters struct
 
 // ----------------------------------------------------------------------
 // clang-format off
 
 struct le_image_encoder_interface_t {
 
-	// This gets re-set automatically on api reload
-	// Update version number if you change the interface
-	uint64_t ( *get_api_version )() = []() -> uint64_t {
-		static constexpr uint64_t API_VERSION = 0ull << 48 | 0ull << 32 | 1ull << 16 | 0ull << 0;
-		return API_VERSION;
-	};
+	static constexpr uint64_t API_VERSION = 0ull << 48 | 0ull << 32 | 2ull << 16 | 1ull << 0;
 
 	// ------------------------------
 
-	void *              ( *clone_image_encoder_parameters_object   )( void* obj );
-	void                ( *destroy_image_encoder_parameters_object )( void* obj );
+	void *              ( *clone_image_encoder_parameters_object   )( void const * obj );
+	void                ( *destroy_image_encoder_parameters_object )( void * obj );
 
 	// ------------------------------
 
-	le_image_encoder_o* ( *create_image_encoder  )( char const* file_name, uint32_t width, uint32_t height );
+	le_image_encoder_o* ( *create_image_encoder  )( char const* filename, uint32_t width, uint32_t height );
+	
 	void 				( *destroy_image_encoder )( le_image_encoder_o* image_encoder_o );
 	void 				( *set_encode_parameters )( le_image_encoder_o* image_encoder_o, void* params );
+
+	// use this to encode another file with the same encoder
+	void 				( *update_filename       )( le_image_encoder_o* image_encoder_o, char const* filename);
 
 
 	uint64_t   			( *get_encoder_version   )( le_image_encoder_o* encoder );
 
-	// load image data from file, and read it into a pre-allocated byte array at p_pixels
 	bool 				( *write_pixels          )( le_image_encoder_o* image_encoder_o, uint8_t const * p_pixel_data, size_t pixel_data_byte_count, le_image_encoder_format_o* pixel_data_format );
 
 };
