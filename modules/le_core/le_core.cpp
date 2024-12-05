@@ -302,10 +302,10 @@ ISL_API_ATTR void* le_core_load_module_static( char const* module_name, void ( *
 
 	uint64_t module_name_hash = hash_64_fnv1a_const( module_name );
 
-	// first try to retrieve api from cache of available apis
+	// First try to retrieve api from cache of available apis
 	void* api = le_core_get_api( module_name_hash, module_name );
 
-	// if api does not yet exist, create it
+	// If api does not yet exist, create it
 	if ( api == nullptr ) {
 
 		// ---------| invariant: this api has not yet been registered
@@ -337,7 +337,8 @@ ISL_API_ATTR void* le_core_load_module_static( char const* module_name, void ( *
 		};
 
 		// Keep track of registered objects so that we can
-		// unregister them later.
+		// unregister them later, when this static variable gets
+		// automatically deleted.
 		static DeferredUnregister unreg;
 
 		unreg.objs.emplace_back( id, module_name, module_unreg_fun, api );
