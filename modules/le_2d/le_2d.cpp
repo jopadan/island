@@ -960,6 +960,19 @@ static le_2d_primitive_o* le_2d_primitive_create_path( le_2d_o* context ) {
 	return p;
 }
 
+static le_2d_primitive_o* le_2d_primitive_create_path_from( le_2d_o* context, le_path_o const* path ) {
+	auto p = le_2d_allocate_primitive( context );
+
+	p->type   = le_2d_primitive_o::Type::ePath;
+	auto& obj = p->data.as_path;
+
+	obj.path      = le_path::le_path_i.clone( path );
+	obj.tolerance = 0.1f;
+
+	p->material.stroke_weight = 1.f;
+	return p;
+}
+
 // ----------------------------------------------------------------------
 
 static void le_2d_primitive_path_move_to( le_2d_primitive_o* p, vec2f const* pos ) {
@@ -1132,6 +1145,7 @@ LE_MODULE_REGISTER_IMPL( le_2d, api ) {
 	le_2d_primitive_i.path_close                   = le_2d_primitive_path_close;
 	le_2d_primitive_i.path_hobby                   = le_2d_primitive_path_hobby;
 	le_2d_primitive_i.create_path                  = le_2d_primitive_create_path;
+	le_2d_primitive_i.create_path_from             = le_2d_primitive_create_path_from;
 
 	le_2d_primitive_i.create_arc     = le_2d_primitive_create_arc;
 	le_2d_primitive_i.create_ellipse = le_2d_primitive_create_ellipse;

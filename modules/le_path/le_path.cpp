@@ -258,6 +258,11 @@ static void le_path_destroy( le_path_o* self ) {
 
 // ----------------------------------------------------------------------
 
+static le_path_o* le_path_clone( le_path_o const* old ) {
+	auto self = new le_path_o{ *old };
+	return self;
+}
+
 static void le_path_clear( le_path_o* self ) {
 	self->contours.clear();
 	self->polylines.clear();
@@ -3337,5 +3342,6 @@ LE_MODULE_REGISTER_IMPL( le_path, api ) {
 	le_path_i.trace    = le_path_trace_path;
 	le_path_i.flatten  = le_path_flatten_path;
 	le_path_i.resample = le_path_resample;
+	le_path_i.clone    = le_path_clone;
 	le_path_i.clear    = le_path_clear;
 }

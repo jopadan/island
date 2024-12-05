@@ -75,6 +75,7 @@ struct le_2d_api {
 		SETTER_DECLARE( line, glm::vec2 const *, p1);
 
 		le_2d_primitive_o* (*create_path)(le_2d_o* context);
+		le_2d_primitive_o* (*create_path_from)(le_2d_o* context, struct le_path_o const * path);
 
 		SETTER_DECLARE( path, float, tolerance);
 
@@ -381,6 +382,11 @@ class Le2D : NoCopy, NoMove {
 			return *this;
 		}
 
+		PathBuilder& create( le_path_o const* p ) {
+			self = le_2d::le_2d_prim_i.create_path_from( parent.self, p );
+			return *this;
+		}
+
 		PathBuilder& move_to( glm::vec2 const& pos ) {
 			le_2d::le_2d_prim_i.path_move_to( self, &pos );
 			return *this;
@@ -480,6 +486,9 @@ class Le2D : NoCopy, NoMove {
 
 	PathBuilder& path() {
 		return mPathBuilder.create();
+	}
+	PathBuilder& path( le_path_o const* p ) {
+		return mPathBuilder.create( p );
 	}
 #	undef BUILDER_IMPLEMENT
 #	undef BUILDER_IMPLEMENT_VEC
