@@ -78,8 +78,12 @@ static void le_image_encoder_destroy( le_image_encoder_o* self ) {
 	logger.info( "Destroying ffmpeg pipe encoder %p", self );
 
 	if ( self->pipe ) {
+#ifdef _MSC_VER
+		// TODO : Add Windows implementation
+#else
 		pclose( self->pipe );
 		self->pipe = nullptr;
+#endif
 	}
 
 	delete self;
@@ -118,7 +122,7 @@ static bool le_image_encoder_write_pixels( le_image_encoder_o* self, uint8_t con
 		}
 
 #ifdef _MSC_VER
-		// todo: implement windows-specific solution
+		// TODO : Add Windows implementation
 #else
 		char cmd[ 1024 ]{};
 		snprintf( cmd, sizeof( cmd ), self->pipe_cmd.c_str(), pix_fmt.c_str(), self->image_width, self->image_height, self->output_file_name.c_str() );
