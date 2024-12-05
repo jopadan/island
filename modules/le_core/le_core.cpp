@@ -341,7 +341,8 @@ ISL_API_ATTR void* le_core_load_module_static( char const* module_name, void ( *
 		// automatically deleted.
 		static DeferredUnregister unreg;
 
-		unreg.objs.emplace_back( id, module_name, module_unreg_fun, api );
+		DeferredUnregister::Obj obj{ id, module_name, module_unreg_fun, api };
+		unreg.objs.emplace_back( std::move( obj ) );
 	}
 
 	return api;
