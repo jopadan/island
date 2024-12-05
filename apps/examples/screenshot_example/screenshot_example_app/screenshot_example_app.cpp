@@ -44,9 +44,9 @@ struct screenshot_example_app_o {
 	glm::vec2                mouse_pos;
 	glm::quat                previous_rotation;
 	glm::quat                current_rotation;
-	uint64_t                 animation_start                   = 0;
-	le_image_resource_handle swapchain_image                   = nullptr;
-	uint32_t                 num_frames_to_record              = 0;
+	uint64_t                 animation_start      = 0;
+	le_image_resource_handle swapchain_image      = nullptr;
+	uint32_t                 num_frames_to_record = 0;
 	le_image_resource_handle map_image;
 	le_texture_handle        map_texture;
 	bool                     hide_help_text = false;
@@ -196,13 +196,13 @@ static void place_north_pole( app_o* self, glm::vec2 st ) {
 	pos = glm::normalize( pos );
 
 	// Build a quaternion for a rotation given an axis/angle pair.
-	// 
-	// A quaternion can ge constructed fairly straightforwardly from 
+	//
+	// A quaternion can be constructed fairly straightforwardly from
 	// an angle-axis representation.
-	// 
-	// We choose the rotation axis to be normal onto the plane spanned by 
+	//
+	// We choose the rotation axis to be normal onto the plane spanned by
 	// origin->previous_position, origin->pos
-	// 
+	//
 	glm::vec3 axis  = normalize( glm::cross( previous_position, pos ) );
 	float     angle = acos( glm::dot( previous_position, pos ) );
 
@@ -250,9 +250,12 @@ static void app_process_ui_events( app_o* self ) {
 				if ( e.key == LeUiEvent::NamedKey::eF11 ) {
 					// toggle full screen
 					wants_toggle ^= true;
+				} else if ( e.key == LeUiEvent::NamedKey::eM ) {
+					// save screenshot screen recording
+					self->num_frames_to_record = 60 * 3;
 				} else if ( e.key == LeUiEvent::NamedKey::eS ) {
 					// save screenshot
-					self->num_frames_to_record = 30;
+					self->num_frames_to_record = 1;
 				} else if ( e.key == LeUiEvent::NamedKey::eG ) {
 					// toggle grid
 					self->hide_grid ^= 1;
@@ -339,7 +342,7 @@ static bool screenshot_example_app_update( screenshot_example_app_o* self ) {
 		// updated.
 		//
 
-		le_swapchain_img_settings_t png_settings{
+		static le_swapchain_img_settings_t png_settings{
 		    .width_hint  = 800, // 0 means to take the width of the renderer's first swapchain
 		    .height_hint = 400, // 0 means to take the height of the renderer's first swapchain
 
@@ -348,12 +351,12 @@ static bool screenshot_example_app_update( screenshot_example_app_o* self ) {
 		    .image_filename_template = "./capture/screenshot_%08d.png",
 		};
 
-		le_ffmpeg_pipe_encoder_parameters_t mp4_params{
+		static le_ffmpeg_pipe_encoder_parameters_t mp4_params{
 		    /* MP4 @ 60 fps */
-		    .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -threads 0 -vcodec h264_nvenc -preset llhq -rc:v vbr_minqp -qmin:v 19 -qmax:v 21 -b:v 2500k -maxrate:v 5000k -profile:v high %s",
+		    .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i %s -threads 0 -vcodec h264_nvenc -preset llhq -rc:v vbr_minqp -qmin:v 19 -qmax:v 21 -b:v 2500k -maxrate:v 5000k -profile:v high %s",
 		};
 
-		le_swapchain_img_settings_t mp4_settings{
+		static le_swapchain_img_settings_t mp4_settings{
 		    .width_hint  = 800, // 0 means to take the width of the renderer's first swapchain
 		    .height_hint = 400, // 0 means to take the height of the renderer's first swapchain
 
@@ -363,11 +366,12 @@ static bool screenshot_example_app_update( screenshot_example_app_o* self ) {
 		    .image_filename_template  = "./capture/output_%04d.mp4",
 		};
 
-		le_ffmpeg_pipe_encoder_parameters_t gif_params{
+		static le_ffmpeg_pipe_encoder_parameters_t gif_params{
 		    /* GIF */
-		    .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -filter_complex \"[0:v] fps=30,split [a][b];[a] palettegen [p];[b][p] paletteuse\" %s",
+		    .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i %s -filter_complex \"[0:v] fps=30,split [a][b];[a] palettegen [p];[b][p] paletteuse\" %s",
 		};
-		le_swapchain_img_settings_t gif_settings{
+
+		static le_swapchain_img_settings_t gif_settings{
 		    .width_hint  = 800, // 0 means to take the width of the renderer's first swapchain
 		    .height_hint = 400, // 0 means to take the height of the renderer's first swapchain
 
@@ -377,24 +381,25 @@ static bool screenshot_example_app_update( screenshot_example_app_o* self ) {
 		    .image_filename_template  = "./capture/output_%04d.gif",
 		};
 
-		// Selecting the appropriate settings struct
-		// to tell the screenshot module how to render
-		// output.
+		// Select png encoder in case there's only one image to encode
+		// -- and GIF encoder otherwise.
 		//
-		// - as png image sequence
-		// - as gif (linux - only for now)
-		// - as mp4 (linux - only for now)
+		// The img_setting only gets used when a new recording begins,
+		// which means that intial settings are "sticky" until the current
+		// run of recording ends, which is signalled by num_frames_to_record
+		// going to 0.
+		//
+		le_swapchain_img_settings_t* selected_swapchain_img_setting =
+		    self->num_frames_to_record == 1
+		        ? &png_settings
+		        : &gif_settings;
 
 		le_screenshot_api_i->le_screenshot_i.record(
 		    self->screen_grabber,
 		    rg,
 		    self->swapchain_image,
 		    &self->num_frames_to_record,
-		    // &mp4_settings //
-		    // &gif_settings //
-		    &png_settings //
-		    //
-		);
+		    selected_swapchain_img_setting );
 	}
 
 	if ( !self->hide_help_text ) {
@@ -409,12 +414,13 @@ static bool screenshot_example_app_update( screenshot_example_app_o* self ) {
 		// Update the contentscale in case we're drawing on an HiDPI monitor
 		self->window.getContentScale( &content_scale_x, nullptr );
 		content_scale_x *= 2;
-		float y_offset = self->window_height - 16 * content_scale_x * ( 6.f + 1.5f );
+		float y_offset = self->window_height - 16 * content_scale_x * ( 7.f + 1.5f );
 		le::DebugPrint::setScale( content_scale_x );
 		le::DebugPrint::setCursor( { 10.f * content_scale_x, y_offset + 10.f * content_scale_x } );
 		le::DebugPrint::printf( " Click anywhere to place North Pole on map \n" );
 		le::DebugPrint::printf( "\n" );
 		le::DebugPrint::printf( " Key <S> to save screen to .png \n" );
+		le::DebugPrint::printf( " Key <M> to record 3 seconds movie to .gif \n" );
 		le::DebugPrint::printf( " Key <G> to toggle grid \n" );
 		le::DebugPrint::printf( " Key <R> to reset projection \n" );
 		le::DebugPrint::printf( " Key <H> to hide/show this text \n" );
