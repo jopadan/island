@@ -10,6 +10,31 @@
 #include <stdio.h>
 #include <cassert>
 
+#ifdef _MSC_VER
+
+#	include <sstream>
+#	include <windows.h>
+
+static const char* G_PIPE_NAME = R"(\\.\pipe\ffmpeg_pipe)";
+
+static std::string get_error_string( DWORD error_no ) {
+	char errorMessage[ 256 ];
+
+	// Retrieve the error message string
+	FormatMessageA(
+	    FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+	    nullptr,
+	    error_no,
+	    MAKELANGID( LANG_NEUTRAL, SUBLANG_DEFAULT ), // Default language
+	    errorMessage,
+	    sizeof( errorMessage ),
+	    nullptr );
+
+	return errorMessage;
+}
+
+#endif
+
 struct le_image_encoder_format_o {
 	le::Format format;
 };
@@ -28,11 +53,10 @@ static uint64_t le_image_encoder_get_encoder_version( le_image_encoder_o* encode
 static le_ffmpeg_pipe_encoder_parameters_t get_default_parameters() {
 	using ns = le_ffmpeg_pipe_encoder_parameters_t;
 	return le_ffmpeg_pipe_encoder_parameters_t{
-	    /* MP4 @ 60 fps */ .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -threads 0 -vcodec h264_nvenc -preset llhq -rc:v vbr_minqp -qmin:v 19 -qmax:v 21 -b:v 2500k -maxrate:v 5000k -profile:v high %s",
-	    // /* GIF */ .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i - -filter_complex \"[0:v] fps=30,split [a][b];[a] palettegen [p];[b][p] paletteuse\" %s",
+	    /* MP4 @ 60 fps */ .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i %s -threads 0 -vcodec h264_nvenc -preset llhq -rc:v vbr_minqp -qmin:v 19 -qmax:v 21 -b:v 2500k -maxrate:v 5000k -profile:v high %s",
+	    // /* GIF */ .command_line = "ffmpeg -r 60 -f rawvideo -pix_fmt %s -s %dx%d -i %s -filter_complex \"[0:v] fps=30,split [a][b];[a] palettegen [p];[b][p] paletteuse\" %s",
 	};
 }
-
 
 // ----------------------------------------------------------------------
 
@@ -42,7 +66,12 @@ struct le_image_encoder_o {
 
 	std::string output_file_name;
 
-	FILE*       pipe; // ffmpeg pipe
+#ifdef _MSC_VER
+	HANDLE              pipe = nullptr; // named windows pipe
+	PROCESS_INFORMATION pi   = {};
+#else
+	FILE* pipe = nullptr; // ffmpeg pipe
+#endif
 	std::string pipe_cmd;
 };
 
@@ -78,8 +107,13 @@ static void le_image_encoder_destroy( le_image_encoder_o* self ) {
 	logger.info( "Destroying ffmpeg pipe encoder %p", self );
 
 	if ( self->pipe ) {
+
 #ifdef _MSC_VER
 		// TODO : Add Windows implementation
+		CloseHandle( self->pipe );
+		CloseHandle( self->pi.hProcess );
+		CloseHandle( self->pi.hThread );
+		self->pipe = nullptr;
 #else
 		pclose( self->pipe );
 		self->pipe = nullptr;
@@ -122,10 +156,66 @@ static bool le_image_encoder_write_pixels( le_image_encoder_o* self, uint8_t con
 		}
 
 #ifdef _MSC_VER
-		// TODO : Add Windows implementation
+
+		// create windows named pipe
+		// Create the named pipe
+
+		self->pipe = CreateNamedPipeA(
+		    G_PIPE_NAME,                // Pipe name
+		    PIPE_ACCESS_OUTBOUND,       // Write access
+		    PIPE_TYPE_BYTE | PIPE_WAIT, // Byte stream pipe, blocking mode
+		    1,                          // Max number of instances
+		    0,                          // Output buffer size
+		    0,                          // Input buffer size
+		    0,                          // Default time-out
+		    nullptr );                  // Default security attributes
+
+		if ( self->pipe == INVALID_HANDLE_VALUE ) {
+			DWORD errorCode = GetLastError(); // Retrieve the last error code
+			logger.error( "Could not create named pipe. Additionally, GetLastError reports: $s", get_error_string( errorCode ).c_str() );
+			self->pipe = nullptr;
+			return false;
+		}
+
+		// create ffmpeg process
+		self->pi = {}; // zero out process_info struct
+
+		STARTUPINFOA si = {};
+		si.cb           = sizeof( self->pi );
+
+		char cmd[ 1024 ]{};
+		snprintf( cmd, sizeof( cmd ), self->pipe_cmd.c_str(), pix_fmt.c_str(), self->image_width, self->image_height, G_PIPE_NAME, self->output_file_name.c_str() );
+		logger.info( "Image encoder opening pipe using command line: '%s'", cmd );
+
+		// Create the process
+		if ( !CreateProcessA(
+		         nullptr,        // Application name
+		         ( LPSTR )cmd,   // Command line
+		         nullptr,        // Process handle not inheritable
+		         nullptr,        // Thread handle not inheritable
+		         FALSE,          // Set handle inheritance to FALSE
+		         0,              // No creation flags
+		         nullptr,        // Use parent's environment block
+		         nullptr,        // Use parent's starting directory
+		         &si,            // Pointer to STARTUPINFO structure
+		         &self->pi ) ) { // Pointer to PROCESS_INFORMATION structure
+
+			DWORD error_no = GetLastError();
+			logger.error( "error creating process: %s", get_error_string( error_no ).c_str() );
+
+			return false;
+		}
+
+		// this should block until ffmpeg has connected
+		ConnectNamedPipe( self->pipe, nullptr );
+		// Wait until the process exits
+		// WaitForSingleObject( self->pi.hProcess, INFINITE );
+
+		// Close process and thread handles
+
 #else
 		char cmd[ 1024 ]{};
-		snprintf( cmd, sizeof( cmd ), self->pipe_cmd.c_str(), pix_fmt.c_str(), self->image_width, self->image_height, self->output_file_name.c_str() );
+		snprintf( cmd, sizeof( cmd ), self->pipe_cmd.c_str(), pix_fmt.c_str(), self->image_width, self->image_height, "-", self->output_file_name.c_str() );
 		logger.info( "Image encoder opening pipe using command line: '%s'", cmd );
 
 		// Open pipe to ffmpeg's stdin in binary write mode
@@ -140,12 +230,24 @@ static bool le_image_encoder_write_pixels( le_image_encoder_o* self, uint8_t con
 	}
 
 	if ( self->pipe ) {
+		// Write out frame contents to ffmpeg via pipe.
+
 		// TODO: we should be able to do the write on the back thread.
 		// the back thread must signal that it is complete with writing
 		// before the next present command is executed.
+#ifdef _MSC_VER
 
-		// Write out frame contents to ffmpeg via pipe.
+		DWORD bytesWritten;
+		if ( !WriteFile( self->pipe, p_pixel_data, pixel_data_byte_count, &bytesWritten, nullptr ) ) {
+			DWORD errorCode = GetLastError(); // Retrieve the last error code
+			logger.error( "Could not write to named pipe. %s", get_error_string( errorCode ).c_str() );
+			self->pipe = nullptr;
+			return false;
+		}
+#else
+		// Linux implementation
 		fwrite( p_pixel_data, pixel_data_byte_count, 1, self->pipe );
+#endif
 	}
 
 	return true;
